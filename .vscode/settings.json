@@ -1,0 +1,8 @@
+{
+	"workbench.editorAssociations": {
+		"*.copilotmd": "vscode.markdown.preview.editor",
+		"*.zip": "default",
+		"file:/**/*.csv": "jupyter-data-wrangler"
+	},
+	"python.analysis.autoImportCompletions": true
+}

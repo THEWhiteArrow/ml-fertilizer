@@ -1,0 +1,20 @@
+# Python binaries
+*/**/__pycache__/
+
+# Environment
+.env
+
+# Data
+data/*.csv
+output/**/*.pkl
+output/**/*.csv
+output/**/*.json
+output/**/*.db
+output/**/*.db-journal
+output/**/*.png
+
+
+# Temporary files
+*.log
+catboost_info
+ignore/*

@@ -1,0 +1,20 @@
+{
+  "CatBoostClassifier_30": 0.3138503703703704,
+  "CatBoostClassifier_25": 0.31388962962962963,
+  "CatBoostClassifier_20": 0.3127262962962963,
+  "CatBoostClassifier_15": 0.3101766666666666,
+  "CatBoostClassifier_10": 0.3074033333333333,
+  "CatBoostClassifier_5": 0.3069118518518518,
+  "XGBClassifier_30": 0.31976703703703707,
+  "XGBClassifier_25": 0.3217851851851851,
+  "XGBClassifier_20": 0.32401185185185183,
+  "XGBClassifier_15": 0.3131407407407407,
+  "XGBClassifier_10": 0.30568,
+  "XGBClassifier_5": 0.3024114814814815,
+  "LGBMClassifier_30": 0.3182548148148148,
+  "LGBMClassifier_25": 0.3181607407407407,
+  "LGBMClassifier_20": 0.3161603703703703,
+  "LGBMClassifier_15": 0.31306444444444437,
+  "LGBMClassifier_10": 0.3087051851851852,
+  "LGBMClassifier_5": 0.29872777777777787
+}
