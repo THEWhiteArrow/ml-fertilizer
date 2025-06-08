@@ -6,7 +6,7 @@ import gc
 import pandas as pd
 from sklearn import clone
 from sklearn.ensemble import StackingClassifier
-from sklearn.linear_model import RidgeClassifier
+from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from ml_fertilizers.lib.logger import setup_logger
 from ml_fertilizers.lib.models.EnsembleModel2 import EnsembleModel2
 from ml_fertilizers.lib.pipelines.ProcessingPipelineWrapper import create_pipeline
@@ -128,9 +128,10 @@ stack_model = EnsembleModel2(
     combination_names=stacking_names,
     just_filtering=True,
     prediction_method="predict_proba",
-    metamodel=RidgeClassifier(),
+    metamodel=LogisticRegression(),
     metamodel_kfold=3,
 )
+
 
 stack_dict = dict()
 
