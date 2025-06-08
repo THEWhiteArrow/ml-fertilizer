@@ -12,6 +12,7 @@ from sklearn import clone
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import StackingClassifier
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
+from sklearn.model_selection import GridSearchCV
 from ml_fertilizers.lib.logger import setup_logger
 from ml_fertilizers.lib.models.EnsembleModel2 import EnsembleModel2
 from ml_fertilizers.lib.pipelines.ProcessingPipelineWrapper import create_pipeline
@@ -138,20 +139,10 @@ for result in results:
     stacking_features.append(res_features)
     stacking_names.append(res_name)
 
-# metamodel = LogisticRegression()
-metamodel = CalibratedClassifierCV(
-    base_estimator=RidgeClassifier(random_state=42), method="sigmoid", cv=3
-)
 
-stack_model = EnsembleModel2(
-    models=stacking_estimators,
-    combination_features=stacking_features,
-    combination_names=stacking_names,
-    just_filtering=True,
-    prediction_method="predict_proba",
-    metamodel=metamodel,
-    metamodel_kfold=3,
-)
+alphas = [0.01, 0.1, 1.0, 10.0, 100.0]
+tols = [1e-3, 1e-2, 1e-1, 0.5, 1.0]
+
 
 stack_score_path = (
     PathManager.output.value / f"{PrefixManager.ensemble.value}stack_scores.json"
@@ -161,13 +152,33 @@ if not stack_score_path.exists():
 else:
     stack_dict = json.load(open(stack_score_path, "r"))
 
-stack_dict["calibrated_ridge_limited_models"] = evaluate(
-    estimator=stack_model,
-    X=X,
-    y=y,
-    cv=3,
-)
-logger.info(f"Stacking model evaluation: {stack_dict['basic_ridge']}")
+for a in alphas:
+    for t in tols:
+
+        metamodel = CalibratedClassifierCV(
+            estimator=RidgeClassifier(alpha=a, tol=t, random_state=42),
+            method="sigmoid",
+            cv=3,
+        )
+
+        stack_model = EnsembleModel2(
+            models=stacking_estimators.copy(),
+            combination_features=stacking_features,
+            combination_names=stacking_names,
+            just_filtering=True,
+            prediction_method="predict_proba",
+            metamodel=metamodel,
+            metamodel_kfold=3,
+        )
+
+        stack_dict[f"calibrated_ridge_limited_models__alpha={a}__tol={t}"] = evaluate(
+            estimator=stack_model,
+            X=X,
+            y=y,
+            cv=3,
+        )
+
+logger.info(f"Stacking model evaluation: {stack_dict}")
 json.dump(
     stack_dict,
     open(stack_score_path, "w"),
