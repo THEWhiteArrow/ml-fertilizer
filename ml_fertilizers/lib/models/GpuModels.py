@@ -33,6 +33,7 @@ class XGBClassifierGPU(XGBClassifier):
 
         kwargs.setdefault("device", "cuda")
         kwargs.setdefault("tree_method", "hist")
+        kwargs.setdefault("predictor", "gpu_predictor")
         super().__init__(**kwargs)
 
     def _use_gpu(self):
@@ -46,7 +47,9 @@ class XGBClassifierGPU(XGBClassifier):
         """Toggle GPU usage for XGBoost."""
         if use_gpu:
             logger.info("Using GPU for XGBoost.")
-            self.set_params(tree_method="hist", device="cuda")
+            self.set_params(
+                tree_method="hist", device="cuda", predictor="gpu_predictor"
+            )
         else:
             logger.warning("Using CPU for XGBoost. This may be slower than using GPU.")
             self.set_params(tree_method=None, device=None)
