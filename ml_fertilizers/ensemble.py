@@ -13,20 +13,26 @@ import optuna
 import pandas as pd
 from sklearn import clone
 from sklearn.calibration import CalibratedClassifierCV, LabelEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.ensemble import StackingClassifier
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.preprocessing import OrdinalEncoder
 from ml_fertilizers.lib.logger import setup_logger
 from ml_fertilizers.lib.models.EnsembleModel2 import EnsembleModel2
+from ml_fertilizers.lib.models.GpuModels import XGBClassifierGPU
 from ml_fertilizers.lib.models.HyperOptResultDict import HyperOptResultDict
 from ml_fertilizers.lib.pipelines.ProcessingPipelineWrapper import create_pipeline
 from ml_fertilizers.lib.utils.results import load_hyper_opt_results
 from ml_fertilizers.utils import (
     PathManager,
     PrefixManager,
+    calc_mapk,
     engineer_features,
     evaluate,
     load_data,
+    mapk_scorer,
 )
 
 model_run = "intial_run"
@@ -481,13 +487,159 @@ def create_ensemble():
     # predict(ens, "ensemble_weighted_with_scores^2_limited_models")
 
 
+def test_xgb_kaggle():
+    train, test = load_data()
+    train = train.set_index("id")
+    test = test.set_index("id")
+
+    train["Temp_Humidity"] = train["Temparature"] * train["Humidity"]
+    train["Temp_Moisture"] = train["Temparature"] * train["Moisture"]
+    train["Soil_Nutrients"] = (
+        train["Nitrogen"] + train["Potassium"] + train["Phosphorous"]
+    )
+    train["Soil_Nutrient_Ratio"] = train["Nitrogen"] / (
+        train["Potassium"] + train["Phosphorous"] + 1
+    )
+    bins = [0, 15, 30, 45, 60]
+    labels = ["Low", "Medium", "High", "Very High"]
+    train["Temperature_Binned"] = pd.cut(train["Temparature"], bins=bins, labels=labels)
+
+    test["Temp_Humidity"] = test["Temparature"] * test["Humidity"]
+    test["Temp_Moisture"] = test["Temparature"] * test["Moisture"]
+    test["Soil_Nutrients"] = test["Nitrogen"] + test["Potassium"] + test["Phosphorous"]
+    test["Soil_Nutrient_Ratio"] = test["Nitrogen"] / (
+        test["Potassium"] + test["Phosphorous"] + 1
+    )
+    test["Temperature_Binned"] = pd.cut(
+        test["Temparature"],
+        bins=bins,
+        labels=labels,
+    )
+
+    le = LabelEncoder()
+    train["Fertilizer Name"] = le.fit_transform(train["Fertilizer Name"])
+    num_cols = [
+        "Temparature",
+        "Humidity",
+        "Moisture",
+        "Nitrogen",
+        "Potassium",
+        "Phosphorous",
+        "Temp_Humidity",
+        "Temp_Moisture",
+        "Soil_Nutrients",
+        "Soil_Nutrient_Ratio",
+    ]
+    cat_cols = ["Soil Type", "Crop Type", "Temperature_Binned"]
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", StandardScaler(), num_cols),
+            ("cat", OrdinalEncoder(), cat_cols),
+        ]
+    )
+
+    # oof_probas = pd.DataFrame(
+    #     index=train.index,
+    #     columns=le.classes_,
+    #     dtype=np.float32,
+    # )
+    # folds = 5
+    # kfold = StratifiedKFold(n_splits=folds, shuffle=True, random_state=42)
+    # for fold, (train_idx, val_idx) in enumerate(
+    #     kfold.split(train[num_cols + cat_cols], train["Fertilizer Name"])
+    # ):
+    #     logger.info(f"Processing fold {fold + 1}/{folds}")
+    #     X_train, X_val = (
+    #         train[num_cols + cat_cols].iloc[train_idx],
+    #         train[num_cols + cat_cols].iloc[val_idx],
+    #     )
+    #     y_train, y_val = (
+    #         train["Fertilizer Name"].iloc[train_idx],
+    #         train["Fertilizer Name"].iloc[val_idx],
+    #     )
+    #     X_train_scaled = preprocessor.fit_transform(X_train)
+    #     X_val_scaled = preprocessor.transform(X_val)
+    #     model = XGBClassifierGPU(
+    #         max_depth=18,
+    #         colsample_bytree=0.2587327850345624,
+    #         subsample=0.8276149323901826,
+    #         n_estimators=4000,
+    #         learning_rate=0.01,
+    #         gamma=0.26,
+    #         max_delta_step=6,
+    #         reg_alpha=5.620898657099113,
+    #         reg_lambda=0.05656209749983576,
+    #         early_stopping_rounds=200,
+    #         objective="multi:softprob",
+    #         random_state=13,
+    #         enable_categorical=True,
+    #     )._set_gpu(True)
+    #     model.fit(
+    #         X_train_scaled, y_train, eval_set=[(X_val_scaled, y_val)], verbose=100
+    #     )
+    #     y_val_proba = model.predict_proba(X_val_scaled)
+    #     oof_probas.iloc[val_idx] = y_val_proba
+    # oof_probas.to_csv(
+    #     PathManager.output.value / "xgb_kaggle_oof_probas.csv",
+    #     index_label="id",
+    # )
+    oof_probas = pd.read_csv(
+        PathManager.output.value / "xgb_kaggle_oof_probas.csv",
+        index_col="id",
+    )
+
+    score = calc_mapk(
+        y_true=train["Fertilizer Name"].values,
+        y_probas=oof_probas.values,
+        k=3,
+    )
+
+    logger.info(f"OOF MAP@3 score: {score}")
+
+    model = XGBClassifierGPU(
+        max_depth=21,
+        colsample_bytree=0.2587327850345624,
+        subsample=0.8276149323901826,
+        n_estimators=4000,
+        learning_rate=0.01,
+        gamma=0.26,
+        max_delta_step=6,
+        reg_alpha=5.620898657099113,
+        reg_lambda=0.05656209749983576,
+        # early_stopping_rounds=200,
+        objective="multi:softprob",
+        random_state=13,
+        enable_categorical=True,
+    )._set_gpu(True)
+
+    model.fit(
+        preprocessor.fit_transform(train[num_cols + cat_cols]),
+        train["Fertilizer Name"],
+    )
+
+    y_pred_raw = model.predict_proba(preprocessor.transform(test[num_cols + cat_cols]))
+    y_topk = np.argsort(y_pred_raw, axis=1)[:, -3:][:, ::-1]
+    y_pred = np.array([" ".join(le.inverse_transform(row)) for row in y_topk])
+    y_sr = pd.Series(
+        y_pred.tolist(),
+        index=test.index,
+        name="Fertilizer Name",
+    )
+
+    y_sr.to_csv(
+        PathManager.output.value / "xgb_kaggle_predictions.csv",
+        index_label="id",
+    )
+
+
 if __name__ == "__main__":
-    results, X, y, job_count, X_test = setup()
+    # results, X, y, job_count, X_test = setup()
     # full_evaluate_results(results, X, y, job_count, gpu)
     # create_stacking(results, X, y, job_count, gpu)
-    create_ensemble()
+    # create_ensemble()
     # analyse_oof()
-
     # predict_singular()
+    test_xgb_kaggle()
 
     logger.info("Completed")

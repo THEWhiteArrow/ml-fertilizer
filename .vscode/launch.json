@@ -27,6 +27,13 @@
 			"console": "internalConsole"
 		},
 		{
+			"name": "Run",
+			"type": "debugpy",
+			"request": "launch",
+			"program": "${workspaceFolder}/ml_fertilizers/run.py",
+			"console": "internalConsole"
+		},
+		{
 			"name": "Ensemble",
 			"type": "debugpy",
 			"request": "launch",

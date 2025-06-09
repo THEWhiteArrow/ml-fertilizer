@@ -52,7 +52,7 @@ def setup_hyper(setup_dto: HyperSetupDto, function_dto: HyperFunctionDto) -> int
             n=limited_data_size, random_state=42, replace=False, axis=0
         )
 
-    logger.info(f"Created {len(setup_dto["combinations"])} combinations.")
+    logger.info(f"Created {len(setup_dto.get('combinations'))} combinations.")
     logger.info("Checking for existing models...")
 
     all_omit_names = [
@@ -69,7 +69,7 @@ def setup_hyper(setup_dto: HyperSetupDto, function_dto: HyperFunctionDto) -> int
     setup_dto["omit_names"] = omit_names
     logger.info(f"Omitting {len(omit_names)} combinations.")
     logger.info(
-        f"Running {len(setup_dto["combinations"]) - len(omit_names)} combinations."
+        f"Running {len(setup_dto.get('combinations')) - len(omit_names)} combinations."
     )
     # --- NOTE ---
     # Metadata is a dictionary that can be used to store any additional information

@@ -231,9 +231,11 @@ def optimize_model_and_save(
         no_improvement_count=no_improvement_count,  # type: ignore
         directions=final_direction,  # type: ignore
     )
-    
-    if n_patience <= 0 or n_patience > max(no_improvement_count):
-        logger.warning(f"Skipping optuna optimization because of n_patience: {n_patience} was exceeded")
+
+    if n_patience <= 0 or n_patience < max(no_improvement_count):
+        logger.warning(
+            f"Skipping optuna optimization because of n_patience: {n_patience} was exceeded"
+        )
     else:
         study.optimize(
             func=create_objective_func(data, model_combination),

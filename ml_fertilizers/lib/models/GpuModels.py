@@ -9,18 +9,19 @@ from ml_fertilizers.lib.logger import setup_logger
 
 try:
     from numba import cuda  # type: ignore
-except ImportError:
+except Exception:
     cuda = None
 
 try:
     import cupy as cp  # type: ignore
-except ImportError:
+except Exception:
     cp = None
 
 try:
     import cudf  # type: ignore
-except ImportError:
+except Exception:
     cudf = None
+
 
 logger = setup_logger(__name__)
 
@@ -62,17 +63,15 @@ class XGBClassifierGPU(XGBClassifier):
                 arr = X.astype(pd.SparseDtype("float32", 0)).sparse.to_coo().tocsr()
             return arr
         # Pandas DataFrame -> cuDF if available, else CuPy, else NumPy
-        elif sp.issparse(X):
-            X_dense = X.toarray()
-            if cp is not None:
-                return cp.array(X_dense)
-            else:
-                return X_dense
+
         elif isinstance(X, pd.DataFrame):
             if cudf is not None:
                 return cudf.DataFrame.from_pandas(X)
             elif cp is not None:
                 return cp.array(X.values)
+            elif cuda is not None:
+                # If using Numba's CUDA, convert to a CuPy array
+                return cuda.to_device(X.values)
             else:
                 return X.values
         elif isinstance(X, np.ndarray):
@@ -80,6 +79,13 @@ class XGBClassifierGPU(XGBClassifier):
                 return cp.array(X)
             else:
                 return X
+
+        elif sp.issparse(X):
+            X_dense = X.toarray()
+            if cp is not None:
+                return cp.array(X_dense)
+            else:
+                return X_dense
         elif cudf is not None and isinstance(X, cudf.DataFrame):
             return X
         elif cp is not None and isinstance(X, cp.ndarray):
@@ -110,21 +116,25 @@ class XGBClassifierGPU(XGBClassifier):
             return y
 
     def fit(self, X, y, **kwargs):
-        X_fin = self._to_gpu_array(X)
-        y_fin = self._to_gpu_label(y)
+        # X_fin = self._to_gpu_array(X)
+        X_fin = X
+        y_fin = y
+        # y_fin = self._to_gpu_label(y)
         self_fitted = super().fit(X_fin, y_fin, **kwargs)
         del X_fin
         del y_fin
         return self_fitted
 
     def predict(self, X, **kwargs):
-        X_fin = self._to_gpu_array(X)
+        # X_fin = self._to_gpu_array(X)
+        X_fin = X
         y_pred = super().predict(X_fin, **kwargs)
         del X_fin
         return y_pred
 
     def predict_proba(self, X, **kwargs):
-        X_fin = self._to_gpu_array(X)
+        # X_fin = self._to_gpu_array(X)
+        X_fin = X
         return super().predict_proba(X_fin, **kwargs)
 
 

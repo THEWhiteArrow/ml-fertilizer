@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple, Union, cast
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer
+from sklearn.preprocessing import FunctionTransformer, OrdinalEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from autofeat import AutoFeatClassifier
@@ -62,6 +62,24 @@ def engineer_features(
     X["PCA_Temparature"] = PCA(n_components=2).fit_transform(
         X[["Temparature", "Humidity", "Moisture"]]
     )[:, 0]
+    X["Temp_Humidity"] = X["Temparature"] * X["Humidity"]
+    X["Temp_Moisture"] = X["Temparature"] * X["Moisture"]
+    X["Soil_Nutrients"] = X["Nitrogen"] + X["Phosphorous"] + X["Potassium"]
+    X["Soil_Nutrient_Ratio"] = X["Nitrogen"] / (X["Phosphorous"] + X["Potassium"] + 1)
+    bins = [0, 15, 30, 45, 60]
+    labels = ["Low", "Medium", "High", "Very High"]
+    X["Temperature_Binned"] = pd.cut(X["Temparature"], bins=bins, labels=labels)
+
+    cat_cols = [
+        "Soil",
+        "Crop",
+        "Temperature_Binned",
+        "Temp_bin",
+        "Humidity_bin",
+        "Moisture_bin",
+    ]
+
+    X[cat_cols] = X[cat_cols].astype("category")
 
     print("Autofeating features...")
 
@@ -287,6 +305,34 @@ rfe_dict = {
     #   "Moisture_bin_medium",
     #   "Moisture_bin_high"
     # ],
+    "XGBClassifier_kaggle": [
+        "Temparature",
+        "Humidity",
+        "Moisture",
+        "Nitrogen",
+        "Potassium",
+        "Phosphorous",
+        "Temp_Humidity",
+        "Temp_Moisture",
+        "Soil_Nutrients",
+        "Soil_Nutrient_Ratio",
+        "Soil",
+        "Crop",
+        "Temperature_Binned",
+    ],
+    "XGBClassifier_own_cat": [
+        "Temparature",
+        "Humidity",
+        "Moisture",
+        "Nitrogen",
+        "Potassium",
+        "Phosphorous",
+        "NPK_Index",
+        "PCA_Temparature",
+        "Soil",
+        "Crop",
+        "Env_Stress_Index",
+    ],
     "XGBClassifier_25": [
         "Temparature",
         "Humidity",
@@ -536,7 +582,7 @@ from ml_fertilizers.lib.optymization.optimization_study import (
 from ml_fertilizers.lib.utils.garbage_collector import garbage_manager
 
 
-processes = 28
+processes = 30
 my_combinations: List[HyperOptCombination] = []
 job_count = processes if processes is not None else mp.cpu_count()
 os.environ["OMP_NUM_THREADS"] = str(job_count)
@@ -544,27 +590,29 @@ os.environ["MKL_NUM_THREADS"] = str(job_count)
 RANDOM_STATE = 42
 gpu = True
 models = [
-    # LGBMClassifier(n_jobs=job_count, verbosity=-1, random_state=RANDOM_STATE, objective="multiclass", eval_metric="multi_logloss"),  # type: ignore
-    # XGBClassifierGPU(
-    #     random_state=RANDOM_STATE,
-    #     n_jobs=job_count,
-    #     verbosity=0,
-    #     objective="multi:softmax",
-    #     eval_metric="mlogloss",
-    #     gpu_dtype=None,
-    # )._set_gpu(use_gpu=True),
-    CatBoostClassifierGPU(
+    XGBClassifierGPU(
         random_state=RANDOM_STATE,
-        thread_count=job_count,
-        verbose=False,
-        allow_writing_files=False,
-        loss_function="MultiClass",
-        eval_metric="MultiClass",
-    )._set_gpu(use_gpu=False),
+        n_jobs=job_count,
+        verbosity=0,
+        objective="multi:softprob",
+        eval_metric="mlogloss",
+        enable_categorical=True,
+    )._set_gpu(use_gpu=True),
+    # LGBMClassifier(n_jobs=job_count, verbosity=-1, random_state=RANDOM_STATE, objective="multiclass", eval_metric="multi_logloss"),  # type: ignore
+    # CatBoostClassifierGPU(
+    #     random_state=RANDOM_STATE,
+    #     thread_count=job_count,
+    #     verbose=False,
+    #     allow_writing_files=False,
+    #     loss_function="MultiClass",
+    #     eval_metric="MultiClass",
+    # )._set_gpu(use_gpu=False),
 ]
 
-for key, features in rfe_dict.items():
-    for model in models:
+for model in models:
+    for key, features in rfe_dict.items():
+        if key != "XGBClassifier_own_cat":
+            continue
         if model.__class__.__name__.startswith(key.split("_")[0]):
             my_combinations.append(
                 HyperOptCombination(
@@ -581,17 +629,38 @@ display(my_combinations)
 
 
 def create_objective(data: pd.DataFrame, model_combination: HyperOptCombination):
-    num_columns = data.select_dtypes(include=["number"]).columns.tolist()
 
-    data[num_columns] = data[num_columns].astype(np.float16)
-
-    X = pd.get_dummies(
-        data.drop(columns=["Fertilizer Name"]), sparse=True, drop_first=False
+    X_raw = data.drop(columns=["Fertilizer Name"])
+    X_cat = pd.get_dummies(
+        data.drop(columns=["Fertilizer Name"]), sparse=False, drop_first=False
     )
+    X_raw[
+        [
+            "Soil",
+            "Crop",
+            "Temperature_Binned",
+            "Temp_bin",
+            "Humidity_bin",
+            "Moisture_bin",
+        ]
+    ] = OrdinalEncoder(
+        handle_unknown="use_encoded_value", unknown_value=-1
+    ).fit_transform(
+        X_raw[
+            [
+                "Soil",
+                "Crop",
+                "Temperature_Binned",
+                "Temp_bin",
+                "Humidity_bin",
+                "Moisture_bin",
+            ]
+        ]
+    )
+    X = pd.concat([X_raw, X_cat], axis=1)
+    X = X.loc[:, ~X.columns.duplicated()]  # Remove duplicate columns
 
-    y = (
-        data["Fertilizer Name"].astype("category").cat.codes
-    )  # Convert to integer codes for RFE
+    y = data["Fertilizer Name"].astype("category").cat.codes
 
     model = model_combination.model
     model_name = model_combination.name
@@ -629,7 +698,7 @@ from ml_fertilizers.lib.optymization.parrarel_optimization import (
 )
 from ml_fertilizers.utils import PrefixManager, PathManager
 
-model_run = "intial_run"
+model_run = "deeper"
 
 setup_dto = HyperSetupDto(
     n_optimization_trials=70,
@@ -637,7 +706,7 @@ setup_dto = HyperSetupDto(
     n_patience=30,
     min_percentage_improvement=0.005,
     model_run=model_run,
-    limit_data_percentage=0.50,
+    limit_data_percentage=None,
     processes=processes,
     max_concurrent_jobs=None,
     output_dir_path=PathManager.output.value,
