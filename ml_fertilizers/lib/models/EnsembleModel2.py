@@ -244,9 +244,40 @@ class EnsembleModel2(BaseEstimator):
             return final_pred
 
         else:
-            raise NotImplementedError(
-                "predict_proba is not implemented for this ensemble model without a metamodel"
+            self.predictions = [
+                pd.DataFrame(
+                    estimator.predict_proba(X),
+                    columns=[f"{class_name}" for class_name in estimator.classes_],
+                    index=X.index,
+                )
+                for estimator, _ in zip(
+                    self.estimators, self.combination_names, strict=True
+                )
+            ]
+
+            final_probas = self._combine_classification_weighted_probablity(
+                predictions=self.predictions, weights=self.weights  # type: ignore
             )
+
+            return final_probas
+
+    @classmethod
+    def _combine_classification_weighted_probablity(
+        cls,
+        predictions: List[pd.Series | pd.DataFrame],
+        weights: List[float],
+    ) -> pd.DataFrame:
+
+        final_proba = pd.DataFrame(
+            index=predictions[0].index, columns=predictions[0].columns
+        )
+
+        for i, prediction in enumerate(predictions):
+            final_proba = final_proba.add(prediction * weights[i], fill_value=0)
+
+        final_proba = final_proba.div(final_proba.sum(axis=1), axis=0)
+        final_proba = final_proba.fillna(0.0)
+        return final_proba
 
     @classmethod
     def _combine_classification_weighted_voting2(

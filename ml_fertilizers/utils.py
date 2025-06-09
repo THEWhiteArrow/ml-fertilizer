@@ -133,7 +133,9 @@ def engineer_features(
 
     final_dict = {
         "num_features": X_final.select_dtypes(include=["number"]).columns.tolist(),
-        "cat_features": X_final.drop(columns=["Fertilizer Name"])
+        "cat_features": X_final.drop(
+            columns=[col for col in ["Fertilizer Name"] if col in X_final.columns]
+        )
         .select_dtypes(include=["object", "category"])
         .columns.tolist(),
         "autofeat_features": (
