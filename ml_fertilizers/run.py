@@ -173,6 +173,15 @@ def create_objective(data: pd.DataFrame, model_combination: HyperOptCombination)
                 oof_probas.iloc[val_index] = model.predict_proba(X_val[features])
 
             score = calc_mapk(y_true=data["Fertilizer Name"], y_probas=oof_probas, k=3)
+            del oof_probas
+            del preprocessor
+            del td
+            del vd
+            del X_train
+            del X_val
+            del y_train
+            del y_val
+            del model
             return score
         except optuna.TrialPruned as e:
             logger.warning(f"Trial {trial.number} was pruned: {e}")

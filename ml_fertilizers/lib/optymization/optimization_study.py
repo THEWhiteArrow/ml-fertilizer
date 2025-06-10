@@ -242,6 +242,7 @@ def optimize_model_and_save(
             n_trials=n_optimization_trials,
             callbacks=[early_stopping],  # type: ignore
             timeout=optimization_timeout,
+            gc_after_trial=True,
         )
 
     study_time_sum = sum(
