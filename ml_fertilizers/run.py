@@ -34,7 +34,7 @@ from ml_fertilizers.lib.utils.garbage_collector import garbage_manager
 # CONFIGURATION
 model_run = "deepfear"
 processes = 20
-gpu = False
+gpu = True
 
 logger = setup_logger(__name__)
 train, test = load_data()
@@ -49,7 +49,7 @@ xgb_model = XGBClassifierGPU(
     objective="multi:softprob",
     eval_metric="mlogloss",
     enable_categorical=True,
-    early_stopping_rounds=200,
+    early_stopping_rounds=300,
 )._set_gpu(use_gpu=gpu)
 
 lr_model = LogisticRegression(
@@ -162,6 +162,7 @@ xgb_kaggle = [
     "Crop",
     "Temp_bin",
 ]
+
 combinations: List[HyperOptCombination] = [
     HyperOptCombination(
         name="XGB_sfs_10",
@@ -231,12 +232,15 @@ def create_objective(data: pd.DataFrame, model_combination: HyperOptCombination)
                 X_val = preprocessor.transform(vd.drop(columns=["Fertilizer Name"]))
                 y_val = vd["Fertilizer Name"]
 
-                model.fit(
-                    X_train[features],
-                    y_train,
-                    eval_set=[(X_val[features], y_val)],
-                    verbose=100,
-                )
+                if model_combination.name.startswith("XGB"):
+                    model.fit(
+                        X_train[features],
+                        y_train,
+                        eval_set=[(X_val[features], y_val)],
+                        verbose=100,
+                    )
+                else:
+                    model.fit(X_train[features], y_train)
 
                 oof_probas.iloc[val_index] = model.predict_proba(X_val[features])
 
@@ -265,44 +269,44 @@ def create_objective(data: pd.DataFrame, model_combination: HyperOptCombination)
     return objective
 
 
-# setup_dto = HyperSetupDto(
-#     n_optimization_trials=70,
-#     optimization_timeout=None,
-#     n_patience=30,
-#     min_percentage_improvement=0.005,
-#     model_run=model_run,
-#     limit_data_percentage=0.7,
-#     processes=processes,
-#     max_concurrent_jobs=None,
-#     output_dir_path=PathManager.output.value,
-#     hyper_opt_prefix=PrefixManager.hyper.value,
-#     study_prefix=PrefixManager.study.value,
-#     data=train,
-#     combinations=combinations,
-#     hyper_direction="maximize",
-#     metadata={},
-#     force_all_sequential=False,
-#     omit_names=None,
-# )
+setup_dto = HyperSetupDto(
+    n_optimization_trials=70,
+    optimization_timeout=None,
+    n_patience=30,
+    min_percentage_improvement=0.005,
+    model_run=model_run,
+    limit_data_percentage=0.75,
+    processes=processes,
+    max_concurrent_jobs=None,
+    output_dir_path=PathManager.output.value,
+    hyper_opt_prefix=PrefixManager.hyper.value,
+    study_prefix=PrefixManager.study.value,
+    data=train,
+    combinations=combinations,
+    hyper_direction="maximize",
+    metadata={},
+    force_all_sequential=False,
+    omit_names=None,
+)
 
 
-# function_dto = HyperFunctionDto(
-#     create_objective_func=create_objective,
-#     evaluate_hyperopted_model_func=None,
-# )
+function_dto = HyperFunctionDto(
+    create_objective_func=create_objective,
+    evaluate_hyperopted_model_func=None,
+)
 
-# n = setup_hyper(setup_dto=setup_dto, function_dto=function_dto)
+n = setup_hyper(setup_dto=setup_dto, function_dto=function_dto)
 
-# if n > 0:
-#     df = setup_analysis(
-#         model_run=model_run,
-#         output_dir_path=PathManager.output.value,
-#         hyper_opt_prefix=PrefixManager.hyper.value,
-#         study_prefix=PrefixManager.study.value,
-#         display_plots=False,
-#     )
+if n > 0:
+    df = setup_analysis(
+        model_run=model_run,
+        output_dir_path=PathManager.output.value,
+        hyper_opt_prefix=PrefixManager.hyper.value,
+        study_prefix=PrefixManager.study.value,
+        display_plots=False,
+    )
 
-#     studies_storage_path = aggregate_studies(
-#         study_dir_path=PathManager.output.value
-#         / f"{PrefixManager.study.value}{model_run}"
-#     )
+    studies_storage_path = aggregate_studies(
+        study_dir_path=PathManager.output.value
+        / f"{PrefixManager.study.value}{model_run}"
+    )

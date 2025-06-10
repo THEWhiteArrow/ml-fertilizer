@@ -33,7 +33,7 @@ class XGBClassifierGPU(XGBClassifier):
 
         kwargs.setdefault("device", "cuda")
         kwargs.setdefault("tree_method", "hist")
-        kwargs.setdefault("predictor", "gpu_predictor")
+        # kwargs.setdefault("predictor", "gpu_predictor")
         super().__init__(**kwargs)
 
     def _use_gpu(self):
