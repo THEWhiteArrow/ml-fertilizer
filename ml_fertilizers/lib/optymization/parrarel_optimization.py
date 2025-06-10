@@ -66,11 +66,10 @@ def run_parallel_optimization(
         "ridge",
         "sv",
         # "kn",
-        "logistic",
+        # "logistic",
         "passiveaggressive",
         "sgd",
         "minibatchsgd",
-        "logistic",
         "neuralnetworkcustommodel",
     ]
     parallel_3rd_model_prefixes = []
