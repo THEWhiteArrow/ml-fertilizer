@@ -79,6 +79,8 @@ def setup_hyper(setup_dto: HyperSetupDto, function_dto: HyperFunctionDto) -> int
 
     if setup_dto["metadata"] is not None:
         metadata.update(setup_dto["metadata"])
+    else:
+        setup_dto["metadata"] = metadata
 
     logger.info("Starting parallel optimization...")
     _ = run_parallel_optimization(setup_dto=setup_dto, function_dto=function_dto)

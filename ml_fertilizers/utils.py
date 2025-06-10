@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from pathlib import Path
 
 import numpy as np
@@ -79,6 +79,11 @@ def calc_mapk(y_true: pd.Series, y_probas: pd.DataFrame, k: int = 3) -> float:
     reciprocal_ranks = hits / (np.arange(1, k + 1))
     # Sum over k for each row (since only one hit per row is possible)
     scores = reciprocal_ranks.sum(axis=1)
+
+    # NOTE: clean up memory
+    topk = topk_sorted = class_labels = topk_labels = hits = reciprocal_ranks = None
+    del topk, topk_sorted, class_labels, topk_labels, hits, reciprocal_ranks
+
     return scores.mean()
 
 
@@ -191,8 +196,9 @@ def engineer_features(
     return X_final.set_index("id"), final_dict, autofeat_cls
 
 
-def engineer_simple(X: pd.DataFrame) -> pd.DataFrame:
-    X = X.copy().set_index("id")
+def engineer_simple(X: pd.DataFrame, features_in: Optional[List[str]]) -> pd.DataFrame:
+
+    X = X.set_index("id")
     X = X.rename(
         columns={
             "Soil Type": "Soil",
@@ -201,50 +207,157 @@ def engineer_simple(X: pd.DataFrame) -> pd.DataFrame:
     )
     # NOTE: ENGINERRING
     # fmt: off
-    X["Env_Stress_Index"] = X["Temparature"] * 0.4 + X["Humidity"] * 0.3 + X["Moisture"] * 0.3
-    X["NPK_Index"] = X["Nitrogen"] * 0.5 + X["Phosphorous"] * 0.3 + X["Potassium"] * 0.2
-    X["Temp_bin"] = pd.cut(X["Temparature"], bins=[-float("inf"), 15, 30, 45, float("inf")], labels=["low", "medium", "high", "very_high"])
-    X["Humidity_bin"] = pd.cut(X["Humidity"], bins=[-float("inf"), 30, 50, 70, float("inf")], labels=["low", "medium", "high", "very_high"])
-    X["Moisture_bin"] = pd.cut(X["Moisture"], bins=[-float("inf"), 20, 40, 60, float("inf")], labels=["low", "medium", "high", "very_high"])
-    X['Soil_Nutrients'] = X['Nitrogen'] + X['Phosphorous'] + X['Potassium']
-    X["Soil_Nutrient_Ratio"] = X["Nitrogen"] / (X["Potassium"] + X["Phosphorous"] + 1)
-    X["Temp_Humidity"] = X["Temparature"] * X["Humidity"]
-    X["Temp_Moisture"] = X["Temparature"] * X["Moisture"]
+    if features_in is None or ('Env_Stress_Index' in features_in):
+        X["Env_Stress_Index"] = X["Temparature"] * 0.4 + X["Humidity"] * 0.3 + X["Moisture"] * 0.3
+    if features_in is None or ('NPK_Index' in features_in):
+        X["NPK_Index"] = X["Nitrogen"] * 0.5 + X["Phosphorous"] * 0.3 + X["Potassium"] * 0.2
+    if features_in is None or (any(pd.Series(features_in).str.contains(r'^Temp_bin\.*$'))):
+        X["Temp_bin"] = pd.Categorical.from_codes(np.digitize(X["Temparature"].values, bins=[-np.inf, 15, 30, 45, np.inf]) - 1, categories=["low", "medium", "high", "very_high"])  # type: ignore
+    if features_in is None or (any(pd.Series(features_in).str.contains(r'^Humidity_bin\.*$'))):
+        X['Humidity_bin'] = pd.Categorical.from_codes(np.digitize(X["Humidity"].values, bins=[-np.inf, 30, 50, 70, np.inf]) - 1, categories=["low", "medium", "high", "very_high"])  # type: ignore
+    if features_in is None or (any(pd.Series(features_in).str.contains(r'^Moisture_bin\.*$'))):
+        X['Moisture_bin'] = pd.Categorical.from_codes(np.digitize(X["Moisture"].values, bins=[-np.inf, 20, 40, 60, np.inf]) - 1, categories=["low", "medium", "high", "very_high"])  # type: ignore
+
+    if features_in is None or ('SoilNutrients' in features_in):
+        X['SoilNutrients'] = X['Nitrogen'] + X['Phosphorous'] + X['Potassium']
+    if features_in is None or ('SoilNutrient_Ratio' in features_in):
+        X["SoilNutrient_Ratio"] = X["Nitrogen"] / (X["Potassium"] + X["Phosphorous"] + 1)
+    if features_in is None or ('Temp_Humidity' in features_in):
+        X["Temp_Humidity"] = X["Temparature"] * X["Humidity"]
+    if features_in is None or ('Temp_Moisture' in features_in):
+        X["Temp_Moisture"] = X["Temparature"] * X["Moisture"]
     # fmt: on
     cat_features = ["Crop", "Soil", "Temp_bin", "Humidity_bin", "Moisture_bin"]
     for col in cat_features:
         if col in X.columns:
             X[col] = X[col].astype("category")
 
-    X_cat = pd.get_dummies(X[cat_features], drop_first=False, sparse=True)
+    X_cat = pd.DataFrame()
+    if features_in is None or (
+        any(pd.Series(features_in).str.contains(r"^Soil_[A-Za-z]+$"))
+    ):
+        X_cat = pd.get_dummies(
+            X["Soil"], prefix="Soil", drop_first=False, sparse=True, dtype="uint8"
+        )
+    if features_in is None or (
+        any(pd.Series(features_in).str.contains(r"^Crop_[A-Za-z]+$"))
+    ):
+        X_cat = pd.concat(
+            [
+                X_cat,
+                pd.get_dummies(
+                    X["Crop"],
+                    prefix="Crop",
+                    drop_first=False,
+                    sparse=True,
+                    dtype="uint8",
+                ),
+            ],
+            axis=1,
+        )
+    if features_in is None or (
+        any(pd.Series(features_in).str.contains(r"^Temp_bin_[A-Za-z]+$"))
+    ):
+        X_cat = pd.concat(
+            [
+                X_cat,
+                pd.get_dummies(
+                    X["Temp_bin"],
+                    prefix="Temp_bin",
+                    drop_first=False,
+                    sparse=True,
+                    dtype="uint8",
+                ),
+            ],
+            axis=1,
+        )
+    if features_in is None or (
+        any(pd.Series(features_in).str.contains(r"^Humidity_bin_[A-Za-z]+$"))
+    ):
+        X_cat = pd.concat(
+            [
+                X_cat,
+                pd.get_dummies(
+                    X["Humidity_bin"],
+                    prefix="Humidity_bin",
+                    drop_first=False,
+                    sparse=True,
+                    dtype="uint8",
+                ),
+            ],
+            axis=1,
+        )
+    if features_in is None or (
+        any(pd.Series(features_in).str.contains(r"^Moisture_bin_[A-Za-z]+$"))
+    ):
+        X_cat = pd.concat(
+            [
+                X_cat,
+                pd.get_dummies(
+                    X["Moisture_bin"],
+                    prefix="Moisture_bin",
+                    drop_first=False,
+                    sparse=True,
+                    dtype="uint8",
+                ),
+            ],
+            axis=1,
+        )
 
-    X_final = pd.concat([X, X_cat], axis=1)
+    if not X_cat.empty:
+        X_final = pd.concat([X, X_cat], axis=1)
+    else:
+        X_final = X.copy()
+
+    X = X_cat = None  # type: ignore
+    del X_cat, X
+
+    # Change int64 to uint16
+    for col in X_final.select_dtypes(include=["int64"]).columns:
+        X_final[col] = X_final[col].astype("uint16")
 
     return X_final
 
 
-def create_preprocessor() -> Pipeline:
+def create_preprocessor(features_in: Optional[List[str]] = None) -> Pipeline:
 
-    pipeline_steps = [
-        ("simple_engineering", FunctionTransformer(engineer_simple)),
+    pipeline_steps: List[Tuple[str, Any]] = [
         (
+            "simple_engineering",
+            FunctionTransformer(
+                lambda df: engineer_simple(df, features_in=features_in)
+            ),
+        )
+    ]
+
+    if features_in is None or (
+        features_in is not None
+        and any(pd.Series(features_in).str.contains(r"^pca\d+$"))
+    ):
+
+        ct_step = (
             "ct",
             ColumnTransformer(
-                transformers=[
-                    (
-                        "temp_pca",
-                        PCA(n_components=2),
-                        ["Temparature", "Humidity", "Moisture"],
-                    ),
-                    (
-                        "temp_stuff",
-                        "passthrough",
-                        ["Temparature", "Humidity", "Moisture"],
-                    ),
-                ],
+                transformers=(
+                    [
+                        (
+                            "temp_pca",
+                            PCA(n_components=2),
+                            ["Temparature", "Humidity", "Moisture"],
+                        ),
+                        (
+                            "temp_stuff",
+                            "passthrough",
+                            ["Temparature", "Humidity", "Moisture"],
+                        ),
+                    ]
+                ),
                 remainder="passthrough",
             ),
-        ),
+        )
+        pipeline_steps.append(ct_step)  # type: ignore
+
+    pipeline_steps.append(
         (
             "remove_prefixes",
             FunctionTransformer(
@@ -252,8 +365,8 @@ def create_preprocessor() -> Pipeline:
                     columns=lambda x: x.split("__")[-1] if "__" in x else x
                 )
             ),
-        ),
-    ]
+        )
+    )
 
     preprocessor = Pipeline(steps=pipeline_steps).set_output(transform="pandas")
     return preprocessor  # type: ignore

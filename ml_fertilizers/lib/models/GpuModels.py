@@ -124,21 +124,27 @@ class XGBClassifierGPU(XGBClassifier):
         y_fin = y
         # y_fin = self._to_gpu_label(y)
         self_fitted = super().fit(X_fin, y_fin, **kwargs)
+        X_fin = y_fin = None
         del X_fin
         del y_fin
+
         return self_fitted
 
     def predict(self, X, **kwargs):
         # X_fin = self._to_gpu_array(X)
         X_fin = X
         y_pred = super().predict(X_fin, **kwargs)
+        X_fin = None
         del X_fin
         return y_pred
 
     def predict_proba(self, X, **kwargs):
         # X_fin = self._to_gpu_array(X)
         X_fin = X
-        return super().predict_proba(X_fin, **kwargs)
+        y_proba = super().predict_proba(X_fin, **kwargs)
+        X_fin = None
+        del X_fin
+        return y_proba
 
 
 class XGBRegressorGPU(XGBRegressor):

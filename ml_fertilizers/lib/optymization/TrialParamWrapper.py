@@ -226,7 +226,9 @@ class TrialParamWrapper:
         return {
             "C": trial.suggest_float("C", 1e-3, 1.0, log=True),
             "tol": trial.suggest_float("tol", 1e-5, 1e-1, log=True),
-            "solver": trial.suggest_categorical("solver", ["lbfgs", "saga"]),
+            "solver": trial.suggest_categorical(
+                "solver", ["lbfgs", "saga", "liblinear"]
+            ),
             "max_iter": trial.suggest_int("max_iter", int(5e2), int(5e3)),
         }
 
