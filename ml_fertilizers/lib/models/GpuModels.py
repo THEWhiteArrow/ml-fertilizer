@@ -26,6 +26,27 @@ except Exception:
 logger = setup_logger(__name__)
 
 
+class XGBClassifierLeanGPU(XGBClassifier):
+    """SHEESH! This is a GPU compatible version of XGBClassifier. It uses the GPU for training and prediction if possible."""
+
+    def __init__(self, **kwargs):
+
+        kwargs.setdefault("device", "cuda")
+        kwargs.setdefault("tree_method", "hist")
+        super().__init__(**kwargs)
+
+    def _set_gpu(self, use_gpu: bool) -> "XGBClassifierGPU":
+        """Toggle GPU usage for XGBoost."""
+        if use_gpu:
+            logger.info("Using GPU for XGBoost.")
+            self.set_params(tree_method="hist", device="cuda")
+        else:
+            logger.warning("Using CPU for XGBoost. This may be slower than using GPU.")
+            self.set_params(tree_method=None, device=None)
+
+        return self
+
+
 class XGBClassifierGPU(XGBClassifier):
     """SHEESH! This is a GPU compatible version of XGBClassifier. It uses the GPU for training and prediction if possible."""
 
