@@ -1,7 +1,7 @@
 import gc
 import json
 import datetime as dt
-from typing import List, Tuple
+from typing import List, Literal, Tuple
 from lightgbm import LGBMClassifier
 import numpy as np
 import pandas as pd
@@ -78,10 +78,18 @@ class CatBoostClassifierCategoricalGPU(BaseEstimator, ClassifierMixin):
         return self.base_clf_.predict_proba(X)
 
 
-def fertilize(estimator, X, y, cv, random_state, preprocessor=None):
+def fertilize(
+    estimator,
+    X,
+    y,
+    cv,
+    random_state,
+    preprocessor=None,
+    cv_type: Literal["oof", "averaged"] = "oof",
+):
     kfold = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
     oof_proba = pd.DataFrame(index=X.index, columns=y.unique())
-
+    scores = []
     for fold, (train_index, val_index) in enumerate(kfold.split(X, y)):
         # logger.info(f"Fold {fold + 1}/{cv}")
         X_train, X_val = X.iloc[train_index], X.iloc[val_index]
@@ -93,13 +101,30 @@ def fertilize(estimator, X, y, cv, random_state, preprocessor=None):
             X_val = preprocessor.transform(X_val)
 
         estimator.fit(X_train, y_train)
-        oof_proba.iloc[val_index] = estimator.predict_proba(X_val)
+        y_proba_raw = estimator.predict_proba(X_val)
+        oof_proba.iloc[val_index] = y_proba_raw
 
-    score = calc_mapk(y_true=y, y_probas=oof_proba, k=3)
-    kfold = oof_proba = X_train = X_val = y_train = y_val = estimator = None
-    del kfold, oof_proba, X_train, X_val, y_train, y_val, estimator
+        y_proba = pd.DataFrame(
+            y_proba_raw, index=X_val.index, columns=le.transform(le.classes_)  # type: ignore
+        )
+        score = calc_mapk(y_true=y_val, y_probas=y_proba, k=3)
+        scores.append(score)
+
+    oof_score = calc_mapk(y_true=y, y_probas=oof_proba, k=3)
+    averaged_score = np.mean(scores)
+    kfold = oof_proba = X_train = X_val = y_train = y_val = estimator = y_proba = None
+    del kfold, oof_proba, X_train, X_val, y_train, y_val, estimator, y_proba
     gc.collect()
-    return score
+
+    final_score = None
+    if cv_type == "oof":
+        final_score = oof_score
+    elif cv_type == "averaged":
+        final_score = averaged_score
+    else:
+        raise ValueError(f"Unknown cv_type: {cv_type}")
+
+    return final_score
 
 
 def dataing(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str], List[str]]:
