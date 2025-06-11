@@ -27,9 +27,9 @@ train, test = load_data()
 class CFG:
     random_state = 69
     n_jobs = -1
-    cv = 5
+    cv = 4
     gpu = True
-    sample_frac = 0.1
+    sample_frac = 0.75
 
 
 class LGBMClassifierCategoricalGPU(LGBMClassifierGPU):
@@ -135,19 +135,20 @@ y_org = y_org[X_org.index]
 
 # fmt: off
 combinations = [
-    ("xgb_raw", XGBClassifierLeanGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss")._set_gpu(CFG.gpu), raw_feat),
+    ("xgb_raw", XGBClassifierLeanGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=10, n_estimators=1000)._set_gpu(CFG.gpu), raw_feat),
     ("cat_raw", CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass"), raw_feat),
     ("lgbm_raw", LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss")._set_gpu(CFG.gpu), raw_feat),
     ("log_ohe", LogisticRegression(), ohe_feat),
     ("cal_ohe", CalibratedClassifierCV(method="sigmoid", cv=CFG.cv, n_jobs=CFG.n_jobs), ohe_feat),
-    ("xgb_ohe", XGBClassifierLeanGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss")._set_gpu(CFG.gpu), ohe_feat),
-    ("cat_ohe", CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass"), ohe_feat),
-    ("lgbm_ohe", LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss")._set_gpu(CFG.gpu), ohe_feat),
+    # ("xgb_ohe", XGBClassifierLeanGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss")._set_gpu(CFG.gpu), ohe_feat),
+    # ("cat_ohe", CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass"), ohe_feat),
+    # ("lgbm_ohe", LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss")._set_gpu(CFG.gpu), ohe_feat),
 ]
 # fmt: on
 
 
 def fbfs(
+    name: str,
     estimator: BaseEstimator,
     X: pd.DataFrame,
     y: pd.Series,
@@ -155,19 +156,27 @@ def fbfs(
     random_state: int,
     k: int,
 ):
-    res_progress = [
-        {
-            "selected_features": [],
-            "score": 0,
-            "added_feature": None,
-            "removed_feature": None,
-        }
-    ]
+    res_path = PathManager.output.value / f"fbfs_{name}_results.json"
+
+    if res_path.exists():
+        logger.info(f"Results already exist for {name}. Loading from {res_path}")
+        res_progress = json.loads(res_path.read_text())
+    else:
+        logger.info(f"Results do not exist for {name}. Starting new run.")
+        res_progress = [
+            {
+                "selected_features": [],
+                "score": 0,
+                "added_feature": None,
+                "removed_feature": None,
+                "timestamp": dt.datetime.now(),
+            }
+        ]
+
     logger.info(
         f"Starting Forward Backward Feature Selection (k={k}) with {estimator.__class__.__name__}"
     )
-    selected_features = []
-
+    selected_features = res_progress[0]["selected_features"].copy()
     while len(selected_features) < k:
 
         if len(selected_features) > 2:
@@ -198,8 +207,10 @@ def fbfs(
                             "score": score,
                             "added_feature": None,
                             "removed_feature": feature,
+                            "timestamp": dt.datetime.now(),
                         }
                     )
+                    res_path.write_text(json.dumps(res_progress, indent=4))
                     break
 
         best_new_score = res_progress[-1]["score"]
@@ -240,8 +251,10 @@ def fbfs(
                     "score": best_new_score,
                     "added_feature": best_new_feature,
                     "removed_feature": None,
+                    "timestamp": dt.datetime.now(),
                 }
             )
+            res_path.write_text(json.dumps(res_progress, indent=4))
         else:
             logger.info(
                 f"No more features to add. Current selected features: {selected_features}"
@@ -250,12 +263,20 @@ def fbfs(
 
     logger.info(f"Final selected features: {selected_features}")
 
+    estimator = None
+    del estimator
+    gc.collect()
+
     return res_progress
 
 
 for name, clf, feat in combinations:
     logger.info(f"Running for {name} with {len(feat)} features")
+    logger.info(
+        f"Estimator: {clf.__class__.__name__} with {clf.get_params()} parameters"
+    )
     ffs_results = fbfs(
+        name=name,
         estimator=clf,
         X=X_org[[f for f in feat if f not in ["id", "Fertilizer Name"]]],
         y=y_org,
@@ -264,12 +285,3 @@ for name, clf, feat in combinations:
         k=int(len(feat) * 0.8),
     )
     logger.info(f"FFS results for {name}:\n{json.dumps(ffs_results, indent=4)}")
-    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    json.dump(
-        ffs_results,
-        open(
-            PathManager.output.value / f"{name}_{timestamp}_ffs_results.json",
-            "w",
-        ),
-        indent=4,
-    )
