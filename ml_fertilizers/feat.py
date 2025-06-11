@@ -3,7 +3,9 @@ import json
 import datetime as dt
 from typing import List, Tuple
 from lightgbm import LGBMClassifier
+import numpy as np
 import pandas as pd
+from sklearn import clone
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.calibration import CalibratedClassifierCV, LabelEncoder
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
@@ -13,9 +15,16 @@ from ml_fertilizers.lib.logger import setup_logger
 from ml_fertilizers.lib.models.GpuModels import (
     CatBoostClassifierGPU,
     LGBMClassifierGPU,
+    XGBClassifierGPU,
     XGBClassifierLeanGPU,
 )
-from ml_fertilizers.utils import PathManager, calc_mapk, load_data
+from ml_fertilizers.utils import (
+    PathManager,
+    calc_mapk,
+    evaluate,
+    load_data,
+    mapk_scorer,
+)
 
 logger = setup_logger(__name__)
 
@@ -27,7 +36,7 @@ train, test = load_data()
 class CFG:
     random_state = 69
     n_jobs = -1
-    cv = 4
+    cv = 5
     gpu = True
     sample_frac = 0.75
 
@@ -109,12 +118,19 @@ def dataing(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str], Lis
     data["N/Ph"] = data["Nitrogen"] / (data["Phosphorous"] + 1e-6)
     data["Po/Ph"] = data["Potassium"] / (data["Phosphorous"] + 1e-6)
     data["N+Po+Ph"] = data["Nitrogen"] + data["Potassium"] + data["Phosphorous"]
+    data["N/(Po+Ph)"] = data["Nitrogen"] / (data["Potassium"] + data["Phosphorous"] + 1)
     data["Temp-Humidity"] = data["Temparature"] * data["Humidity"]
+    data["Temp-Moisture"] = data["Temparature"] * data["Moisture"]
+
+    data["Temp_bin"] = pd.Categorical.from_codes(
+        np.digitize(data["Temparature"].values, bins=[-np.inf, 15, 30, 45, np.inf]) - 1,  # type: ignore
+        categories=["low", "medium", "high", "very_high"],  # type: ignore
+    )
 
     feat_data = data.drop(columns=["Fertilizer Name"])
     target_data = data["Fertilizer Name"]
 
-    cat_features = ["Soil", "Crop", "Soil_x_Crop"]
+    cat_features = ["Soil", "Crop", "Soil_x_Crop", "Temp_bin"]
     feat_cat_data = pd.get_dummies(feat_data[cat_features], drop_first=True)
 
     final_data = pd.concat([feat_data, feat_cat_data], axis=1)
@@ -134,12 +150,13 @@ X_org = X_org.sample(frac=CFG.sample_frac, random_state=CFG.random_state)
 y_org = y_org[X_org.index]
 
 # fmt: off
+xgb_model = XGBClassifierGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=12, n_estimators=800, allow_categorical_as_ordinal=False)._set_gpu(CFG.gpu)
 combinations = [
-    ("xgb_raw", XGBClassifierLeanGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=10, n_estimators=1000)._set_gpu(CFG.gpu), raw_feat),
-    ("cat_raw", CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass"), raw_feat),
-    ("lgbm_raw", LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss")._set_gpu(CFG.gpu), raw_feat),
-    ("log_ohe", LogisticRegression(), ohe_feat),
-    ("cal_ohe", CalibratedClassifierCV(method="sigmoid", cv=CFG.cv, n_jobs=CFG.n_jobs), ohe_feat),
+    ("xgb_raw", xgb_model, raw_feat),
+    # ("cat_raw", CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=100, max_depth=10), raw_feat),
+    # ("lgbm_raw", LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss", max_depth=10)._set_gpu(CFG.gpu), raw_feat),
+    # ("log_ohe", LogisticRegression(), ohe_feat),
+    # ("cal_ohe", CalibratedClassifierCV(method="sigmoid", cv=CFG.cv, n_jobs=CFG.n_jobs), ohe_feat),
     # ("xgb_ohe", XGBClassifierLeanGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss")._set_gpu(CFG.gpu), ohe_feat),
     # ("cat_ohe", CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass"), ohe_feat),
     # ("lgbm_ohe", LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss")._set_gpu(CFG.gpu), ohe_feat),
@@ -155,6 +172,8 @@ def fbfs(
     cv: int,
     random_state: int,
     k: int,
+    min_k: int = 5,
+    min_k_to_remove: int = 3,
 ):
     res_path = PathManager.output.value / f"fbfs_{name}_results.json"
 
@@ -176,26 +195,35 @@ def fbfs(
     logger.info(
         f"Starting Forward Backward Feature Selection (k={k}) with {estimator.__class__.__name__}"
     )
-    selected_features = res_progress[0]["selected_features"].copy()
+    selected_features = res_progress[-1]["selected_features"].copy()
     while len(selected_features) < k:
 
-        if len(selected_features) > 2:
+        if len(selected_features) >= min_k_to_remove:
             logger.info(
                 f"Current selected features: {selected_features}, total: {len(selected_features)}, score: {res_progress[-1]['score']}"
             )
             curr_score = res_progress[-1]["score"]
 
             for feature in selected_features:
+                logger.info(
+                    f"Evaluating feature for removal: {feature} | current score: {curr_score}"
+                )
                 if feature == res_progress[-1]["added_feature"]:
                     continue
                 temp_features = selected_features.copy()
                 temp_features.remove(feature)
-                score = fertilize(
-                    estimator=estimator,
+                # score = fertilize(
+                #     estimator=estimator,
+                #     X=X[temp_features],
+                #     y=y,
+                #     cv=cv,
+                #     random_state=random_state,
+                # )
+                score = evaluate(
+                    estimator=clone(estimator),
                     X=X[temp_features],
                     y=y,
                     cv=cv,
-                    random_state=random_state,
                 )
                 if score > curr_score:
                     curr_score = score
@@ -217,7 +245,10 @@ def fbfs(
                     res_path.write_text(json.dumps(res_progress, indent=4))
                     break
 
-        best_new_score = res_progress[-1]["score"]
+        if len(selected_features) < min_k:
+            best_new_score = -1
+        else:
+            best_new_score = res_progress[-1]["score"]
         best_new_feature = None
         features_to_consider = [
             f
@@ -239,7 +270,7 @@ def fbfs(
 
             if score > best_new_score:
                 logger.info(
-                    f"Found better feature: {feature} with score: {score} (previous best: {best_new_score})"
+                    f"Found better feature: {feature} with score: {score} | previous best: {best_new_score} | overall best: {max(p['score'] for p in res_progress)}"
                 )
                 best_new_score = score
                 best_new_feature = feature
@@ -287,5 +318,57 @@ for name, clf, feat in combinations:
         cv=CFG.cv,
         random_state=CFG.random_state,
         k=int(len(feat) * 0.8),
+        min_k=10,
+        min_k_to_remove=5,
     )
     logger.info(f"FFS results for {name}:\n{json.dumps(ffs_results, indent=4)}")
+
+
+# kaggle_feat = [
+#     "Temparature",
+#     "Humidity",
+#     "Moisture",
+#     "Nitrogen",
+#     "Potassium",
+#     "Phosphorous",
+#     "Temp-Humidity",
+#     "Temp-Moisture",
+#     "N+Po+Ph",
+#     "N/(Po+Ph)",
+#     "Soil",
+#     "Crop",
+#     "Temp_bin",
+# ]
+# f_score = fertilize(
+#     estimator=clone(xgb_model),
+#     X=X_org[kaggle_feat],
+#     y=y_org,
+#     cv=CFG.cv,
+#     random_state=CFG.random_state,
+#     preprocessor=None,
+# )
+# logger.info(f"Fertilization score: {f_score}")
+
+
+# m_score = evaluate(
+#     estimator=clone(xgb_model),
+#     X=X_org[kaggle_feat],
+#     y=y_org,
+#     cv=CFG.cv,
+# )
+# logger.info(f"MAP@K score: {m_score}")
+# X_train = X_org.sample(frac=0.8, random_state=CFG.random_state)
+# X_test = X_org.drop(X_train.index)
+# y_train = y_org[X_train.index]
+# y_test = y_org[X_test.index]
+
+# fitted_model = clone(xgb_model).fit(X_train[kaggle_feat], y_train)
+# y_proba_raw = fitted_model.predict_proba(X_test[kaggle_feat])
+# y_proba = pd.DataFrame(
+#     y_proba_raw, index=X_test.index, columns=le.transform(le.classes_)  # type: ignore
+# )
+
+# f_score = calc_mapk(y_true=y_test, y_probas=y_proba, k=3)
+# logger.info(f"Fertilization score: {f_score}")
+# m_score = mapk_scorer(estimator=fitted_model, X=X_test[kaggle_feat], y_true=y_test, k=3)
+# logger.info(f"MAP@K score: {m_score}")

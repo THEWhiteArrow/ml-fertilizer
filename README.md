@@ -87,3 +87,22 @@ class Trainer:
             
         return np.mean(scores)
 ```
+
+# Execution logs
+```
+INFO __main__ 21:18:08 | Fertilization score: 0.2624782222222222
+INFO __main__ 21:27:02 | MAP@K score: 0.27474844444444446
+---
+INFO __main__ 21:40:13 | Fertilization score: 0.258728
+INFO __main__ 21:47:06 | MAP@K score: 0.30092266666666667
+---
+I think that my own calc_mapk is not working properly, so I will use the one from the some kaggle notebook:
+EDIT
+It is working correclty:
+INFO __main__ 22:10:08 | Fertilization score: 0.29888
+INFO __main__ 22:10:09 | MAP@K score: 0.29888
+
+So it must be different way cross-validation is handled - needs further investigation
+---
+I think that mine is calculating OOF and then MAP@K, while the one from the notebook is calculating MAP@K for each fold and then averaging it
+```

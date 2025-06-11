@@ -8,11 +8,6 @@ from xgboost import XGBClassifier, XGBRegressor
 from ml_fertilizers.lib.logger import setup_logger
 
 try:
-    from numba import cuda  # type: ignore
-except Exception:
-    cuda = None
-
-try:
     import cupy as cp  # type: ignore
 except Exception:
     cp = None
@@ -50,11 +45,12 @@ class XGBClassifierLeanGPU(XGBClassifier):
 class XGBClassifierGPU(XGBClassifier):
     """SHEESH! This is a GPU compatible version of XGBClassifier. It uses the GPU for training and prediction if possible."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, allow_categorical_as_ordinal=False, **kwargs):
 
         kwargs.setdefault("device", "cuda")
         kwargs.setdefault("tree_method", "hist")
-        # kwargs.setdefault("predictor", "gpu_predictor")
+        self.allow_categorical_as_ordinal = allow_categorical_as_ordinal
+
         super().__init__(**kwargs)
 
     def _use_gpu(self):
@@ -68,9 +64,7 @@ class XGBClassifierGPU(XGBClassifier):
         """Toggle GPU usage for XGBoost."""
         if use_gpu:
             logger.info("Using GPU for XGBoost.")
-            self.set_params(
-                tree_method="hist", device="cuda", predictor="gpu_predictor"
-            )
+            self.set_params(tree_method="hist", device="cuda")
         else:
             logger.warning("Using CPU for XGBoost. This may be slower than using GPU.")
             self.set_params(tree_method=None, device=None)
@@ -79,12 +73,16 @@ class XGBClassifierGPU(XGBClassifier):
 
     def _to_gpu_array(self, X):
 
-        if not self._use_gpu():
+        if not self._use_gpu() or (
+            self._use_gpu()
+            and self.get_params().get("enable_categorical", False)
+            and not self.allow_categorical_as_ordinal
+        ):
             arr = X
             if isinstance(X, pd.DataFrame) and any(
                 [isinstance(col, pd.SparseDtype) for col in X.dtypes]
             ):
-                arr = X.astype(pd.SparseDtype("float32", 0)).sparse.to_coo().tocsr()
+                arr = X.astype(pd.SparseDtype("uint16", 0)).sparse.to_coo().tocsr()
             return arr
         # Pandas DataFrame -> cuDF if available, else CuPy, else NumPy
 
@@ -92,6 +90,9 @@ class XGBClassifierGPU(XGBClassifier):
             if cudf is not None:
                 return cudf.DataFrame.from_pandas(X)
             elif cp is not None:
+                for col in X.select_dtypes(include=["category"]).columns:
+                    X[col] = X[col].cat.codes.astype("uint16")
+
                 return cp.array(X.values)
             elif cuda is not None:
                 # If using Numba's CUDA, convert to a CuPy array
@@ -140,10 +141,8 @@ class XGBClassifierGPU(XGBClassifier):
             return y
 
     def fit(self, X, y, **kwargs):
-        # X_fin = self._to_gpu_array(X)
-        X_fin = X
-        y_fin = y
-        # y_fin = self._to_gpu_label(y)
+        X_fin = self._to_gpu_array(X)
+        y_fin = self._to_gpu_label(y)
         self_fitted = super().fit(X_fin, y_fin, **kwargs)
         X_fin = y_fin = None
         del X_fin
@@ -152,16 +151,14 @@ class XGBClassifierGPU(XGBClassifier):
         return self_fitted
 
     def predict(self, X, **kwargs):
-        # X_fin = self._to_gpu_array(X)
-        X_fin = X
+        X_fin = self._to_gpu_array(X)
         y_pred = super().predict(X_fin, **kwargs)
         X_fin = None
         del X_fin
         return y_pred
 
     def predict_proba(self, X, **kwargs):
-        # X_fin = self._to_gpu_array(X)
-        X_fin = X
+        X_fin = self._to_gpu_array(X)
         y_proba = super().predict_proba(X_fin, **kwargs)
         X_fin = None
         del X_fin
