@@ -169,7 +169,7 @@ def fbfs(
                 "score": 0,
                 "added_feature": None,
                 "removed_feature": None,
-                "timestamp": dt.datetime.now(),
+                "timestamp": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
         ]
 
@@ -200,14 +200,18 @@ def fbfs(
                 if score > curr_score:
                     curr_score = score
                     selected_features.remove(feature)
-                    logger.info(f"Removed feature: {feature} with score: {score}")
+                    logger.info(
+                        f"Removed feature: {feature} with score: {score} | old score: {res_progress[-1]['score']}"
+                    )
                     res_progress.append(
                         {
                             "selected_features": selected_features.copy(),
                             "score": score,
                             "added_feature": None,
                             "removed_feature": feature,
-                            "timestamp": dt.datetime.now(),
+                            "timestamp": dt.datetime.now().strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            ),
                         }
                     )
                     res_path.write_text(json.dumps(res_progress, indent=4))
@@ -251,7 +255,7 @@ def fbfs(
                     "score": best_new_score,
                     "added_feature": best_new_feature,
                     "removed_feature": None,
-                    "timestamp": dt.datetime.now(),
+                    "timestamp": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
             )
             res_path.write_text(json.dumps(res_progress, indent=4))
