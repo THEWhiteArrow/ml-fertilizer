@@ -34,7 +34,7 @@ from ml_fertilizers.lib.utils.garbage_collector import garbage_manager
 # CONFIGURATION
 model_run = "deepfear"
 processes = 20
-gpu = True
+gpu = False
 
 logger = setup_logger(__name__)
 train, test = load_data()

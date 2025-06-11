@@ -34,6 +34,13 @@
 			"console": "internalConsole"
 		},
 		{
+			"name": "Feat",
+			"type": "debugpy",
+			"request": "launch",
+			"program": "${workspaceFolder}/ml_fertilizers/feat.py",
+			"console": "internalConsole"
+		},
+		{
 			"name": "Ensemble",
 			"type": "debugpy",
 			"request": "launch",
