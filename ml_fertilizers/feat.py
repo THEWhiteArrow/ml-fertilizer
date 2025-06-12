@@ -176,10 +176,13 @@ y_org = y_org[X_org.index]
 
 # fmt: off
 xgb_model = XGBClassifierGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=12, n_estimators=700, allow_categorical_as_ordinal=False, verbosity=0)._set_gpu(CFG.gpu)
+cat_model = CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=500, max_depth=10)
+lgbm_model = LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss", max_depth=10)._set_gpu(CFG.gpu)
 combinations = [
-    ("xgb_raw", xgb_model, raw_feat),
-    # ("cat_raw", CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=100, max_depth=10), raw_feat),
-    # ("lgbm_raw", LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss", max_depth=10)._set_gpu(CFG.gpu), raw_feat),
+
+    # ("xgb_raw", xgb_model, raw_feat),
+    ("cat_raw", cat_model, raw_feat),
+    ("lgbm_raw", lgbm_model, raw_feat),
     # ("log_ohe", LogisticRegression(), ohe_feat),
     # ("cal_ohe", CalibratedClassifierCV(method="sigmoid", cv=CFG.cv, n_jobs=CFG.n_jobs), ohe_feat),
     # ("xgb_ohe", XGBClassifierLeanGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss")._set_gpu(CFG.gpu), ohe_feat),
