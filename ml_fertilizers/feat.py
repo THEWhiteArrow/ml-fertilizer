@@ -175,7 +175,7 @@ X_org = X_org.sample(frac=CFG.sample_frac, random_state=CFG.random_state)
 y_org = y_org[X_org.index]
 
 # fmt: off
-xgb_model = XGBClassifierGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=12, n_estimators=800, allow_categorical_as_ordinal=False)._set_gpu(CFG.gpu)
+xgb_model = XGBClassifierGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=12, n_estimators=700, allow_categorical_as_ordinal=False, verbosity=0)._set_gpu(CFG.gpu)
 combinations = [
     ("xgb_raw", xgb_model, raw_feat),
     # ("cat_raw", CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=100, max_depth=10), raw_feat),
@@ -285,12 +285,18 @@ def fbfs(
                 f"Evaluating feature {i + 1}/{len(features_to_consider)}: {feature}"
             )
             current_features = selected_features + [feature]
-            score = fertilize(
-                estimator=estimator,
+            # score = fertilize(
+            #     estimator=estimator,
+            #     X=X[current_features],
+            #     y=y,
+            #     cv=cv,
+            #     random_state=random_state,
+            # )
+            score = evaluate(
+                estimator=clone(estimator),
                 X=X[current_features],
                 y=y,
                 cv=cv,
-                random_state=random_state,
             )
 
             if score > best_new_score:
