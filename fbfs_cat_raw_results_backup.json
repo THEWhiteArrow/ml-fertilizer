@@ -1,0 +1,284 @@
+[
+    {
+        "selected_features": [],
+        "score": 0,
+        "added_feature": null,
+        "removed_feature": null,
+        "timestamp": "2025-06-12 18:08:30"
+    },
+    {
+        "selected_features": [
+            "Moisture"
+        ],
+        "score": 0.2932598518518519,
+        "added_feature": "Moisture",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 18:15:37"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous"
+        ],
+        "score": 0.30230755555555555,
+        "added_feature": "Phosphorous",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 18:23:09"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen"
+        ],
+        "score": 0.3088968888888889,
+        "added_feature": "Nitrogen",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 18:30:40"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Potassium"
+        ],
+        "score": 0.3136011851851851,
+        "added_feature": "Potassium",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 18:38:07"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Potassium",
+            "Crop"
+        ],
+        "score": 0.3153288888888889,
+        "added_feature": "Crop",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 18:45:25"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Potassium",
+            "Crop",
+            "Soil"
+        ],
+        "score": 0.3175362962962963,
+        "added_feature": "Soil",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 18:59:25"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Potassium",
+            "Crop",
+            "Soil",
+            "Temparature"
+        ],
+        "score": 0.31893659259259255,
+        "added_feature": "Temparature",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 19:13:39"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Potassium",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity"
+        ],
+        "score": 0.32089422222222225,
+        "added_feature": "Humidity",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 19:27:53"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Potassium",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "Temp_bin"
+        ],
+        "score": 0.32089422222222225,
+        "added_feature": "Temp_bin",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 19:42:14"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Potassium",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "Temp_bin",
+            "Po/Ph"
+        ],
+        "score": 0.32053985185185185,
+        "added_feature": "Po/Ph",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 19:56:48"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "Temp_bin",
+            "Po/Ph"
+        ],
+        "score": 0.3211288888888889,
+        "added_feature": null,
+        "removed_feature": "Potassium",
+        "timestamp": "2025-06-12 20:17:07"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "Temp_bin",
+            "Po/Ph",
+            "N/Ph"
+        ],
+        "score": 0.32142822222222217,
+        "added_feature": "N/Ph",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 20:25:14"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "Po/Ph",
+            "N/Ph"
+        ],
+        "score": 0.3214284444444444,
+        "added_feature": null,
+        "removed_feature": "Temp_bin",
+        "timestamp": "2025-06-12 20:34:27"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "Po/Ph",
+            "N/Ph",
+            "Potassium"
+        ],
+        "score": 0.3235206666666667,
+        "added_feature": "Potassium",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 20:42:22"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "N/Ph",
+            "Potassium"
+        ],
+        "score": 0.3245431111111111,
+        "added_feature": null,
+        "removed_feature": "Po/Ph",
+        "timestamp": "2025-06-12 20:51:22"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "N/Ph",
+            "Potassium",
+            "Temp_bin"
+        ],
+        "score": 0.3246442222222222,
+        "added_feature": "Temp_bin",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 20:59:16"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "Potassium",
+            "Temp_bin"
+        ],
+        "score": 0.32469000000000003,
+        "added_feature": null,
+        "removed_feature": "N/Ph",
+        "timestamp": "2025-06-12 21:08:22"
+    },
+    {
+        "selected_features": [
+            "Moisture",
+            "Phosphorous",
+            "Nitrogen",
+            "Crop",
+            "Soil",
+            "Temparature",
+            "Humidity",
+            "Potassium",
+            "Temp_bin",
+            "Soil_x_Crop"
+        ],
+        "score": 0.3244422222222222,
+        "added_feature": "Soil_x_Crop",
+        "removed_feature": null,
+        "timestamp": "2025-06-12 21:16:23"
+    }
+]

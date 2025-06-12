@@ -38,7 +38,7 @@ class CFG:
     n_jobs = -1
     cv = 5
     gpu = True
-    sample_frac = 0.75
+    sample_frac = 1.0
 
 
 class LGBMClassifierCategoricalGPU(LGBMClassifierGPU):
@@ -54,14 +54,19 @@ class LGBMClassifierCategoricalGPU(LGBMClassifierGPU):
 
 
 class CatBoostClassifierCategoricalGPU(BaseEstimator, ClassifierMixin):
-    def __init__(self, gpu=True, **kwargs):
+    def __init__(self, gpu=True, verbose=0, **kwargs):
         self.kwargs = kwargs
+        for key, value in kwargs.items():
+            self.__setattr__(key, value)
+
         self.base_clf_ = None
         self.gpu = gpu
+        self.verbose = verbose
 
     def fit(self, X, y, **kwargs):
         self.base_clf_ = CatBoostClassifierGPU(
             **self.kwargs,
+            verbose=self.verbose,
             cat_features=X.select_dtypes(include=["category"]).columns.tolist(),
         )._set_gpu(self.gpu)
         self.base_clf_.fit(X, y, **kwargs)
@@ -176,7 +181,7 @@ y_org = y_org[X_org.index]
 
 # fmt: off
 xgb_model = XGBClassifierGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=12, n_estimators=700, allow_categorical_as_ordinal=False, verbosity=0)._set_gpu(CFG.gpu)
-cat_model = CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=500, max_depth=10)
+cat_model = CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=0, max_depth=10)
 lgbm_model = LGBMClassifierCategoricalGPU(n_jobs=CFG.n_jobs, verbosity=-1, objective="multiclass", eval_metric="multiclass_logloss", max_depth=10)._set_gpu(CFG.gpu)
 combinations = [
 
@@ -225,6 +230,8 @@ def fbfs(
     )
     selected_features = res_progress[-1]["selected_features"].copy()
     while len(selected_features) < k:
+        was_added = False
+        was_removed = False
 
         if len(selected_features) >= min_k_to_remove:
             logger.info(
@@ -233,9 +240,7 @@ def fbfs(
             curr_score = res_progress[-1]["score"]
 
             for feature in selected_features:
-                logger.info(
-                    f"Evaluating feature for removal: {feature} | current score: {curr_score}"
-                )
+                logger.info(f"Evaluating feature for removal: {feature}")
                 if feature == res_progress[-1]["added_feature"]:
                     continue
                 temp_features = selected_features.copy()
@@ -254,11 +259,11 @@ def fbfs(
                     cv=cv,
                 )
                 if score > curr_score:
+                    logger.info(
+                        f"Removed feature: {feature} with score: {score} | old score: {curr_score}"
+                    )
                     curr_score = score
                     selected_features.remove(feature)
-                    logger.info(
-                        f"Removed feature: {feature} with score: {score} | old score: {res_progress[-1]['score']}"
-                    )
                     res_progress.append(
                         {
                             "selected_features": selected_features.copy(),
@@ -271,7 +276,12 @@ def fbfs(
                         }
                     )
                     res_path.write_text(json.dumps(res_progress, indent=4))
+                    was_removed = True
                     break
+                # else:
+                #     logger.info(
+                #         f"Not removed feature: {feature} | new score {score} | old score {curr_score}"
+                #     )
 
         if len(selected_features) < min_k:
             best_new_score = -1
@@ -324,9 +334,16 @@ def fbfs(
                 }
             )
             res_path.write_text(json.dumps(res_progress, indent=4))
-        else:
+            was_added = True
+        # else:
+        #     logger.info(
+        #         f"No more features to add. Current selected features: {selected_features}"
+        #     )
+        #     break
+
+        if not was_added and not was_removed:
             logger.info(
-                f"No more features to add. Current selected features: {selected_features}"
+                f"No more features to add or remove. Current selected features: {selected_features}"
             )
             break
 
@@ -352,7 +369,7 @@ for name, clf, feat in combinations:
         cv=CFG.cv,
         random_state=CFG.random_state,
         k=int(len(feat) * 0.8),
-        min_k=10,
+        min_k=8,
         min_k_to_remove=5,
     )
     logger.info(f"FFS results for {name}:\n{json.dumps(ffs_results, indent=4)}")
