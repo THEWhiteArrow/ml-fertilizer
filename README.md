@@ -105,4 +105,55 @@ INFO __main__ 22:10:09 | MAP@K score: 0.29888
 So it must be different way cross-validation is handled - needs further investigation
 ---
 I think that mine is calculating OOF and then MAP@K, while the one from the notebook is calculating MAP@K for each fold and then averaging it
+
+
+# kaggle_feat = [
+#     "Temparature",
+#     "Humidity",
+#     "Moisture",
+#     "Nitrogen",
+#     "Potassium",
+#     "Phosphorous",
+#     "Temp-Humidity",
+#     "Temp-Moisture",
+#     "N+Po+Ph",
+#     "N/(Po+Ph)",
+#     "Soil",
+#     "Crop",
+#     "Temp_bin",
+# ]
+# f_score = fertilize(
+#     estimator=clone(xgb_model),
+#     X=X_org[kaggle_feat],
+#     y=y_org,
+#     cv=CFG.cv,
+#     random_state=CFG.random_state,
+#     preprocessor=None,
+# )
+# logger.info(f"Fertilization score: {f_score}")
+
+
+# m_score = evaluate(
+#     estimator=clone(xgb_model),
+#     X=X_org[kaggle_feat],
+#     y=y_org,
+#     cv=CFG.cv,
+# )
+# logger.info(f"MAP@K score: {m_score}")
+# X_train = X_org.sample(frac=0.8, random_state=CFG.random_state)
+# X_test = X_org.drop(X_train.index)
+# y_train = y_org[X_train.index]
+# y_test = y_org[X_test.index]
+
+# fitted_model = clone(xgb_model).fit(X_train[kaggle_feat], y_train)
+# y_proba_raw = fitted_model.predict_proba(X_test[kaggle_feat])
+# y_proba = pd.DataFrame(
+#     y_proba_raw, index=X_test.index, columns=le.transform(le.classes_)  # type: ignore
+# )
+
+# f_score = calc_mapk(y_true=y_test, y_probas=y_proba, k=3)
+# logger.info(f"Fertilization score: {f_score}")
+# m_score = mapk_scorer(estimator=fitted_model, X=X_test[kaggle_feat], y_true=y_test, k=3)
+# logger.info(f"MAP@K score: {m_score}")
+
 ```

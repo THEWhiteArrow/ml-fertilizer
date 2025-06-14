@@ -4,8 +4,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
+from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.model_selection import cross_val_score
 from autofeat import AutoFeatClassifier
 from sklearn.pipeline import FunctionTransformer, Pipeline
@@ -367,6 +368,38 @@ def create_preprocessor(features_in: Optional[List[str]] = None) -> Pipeline:
             ),
         )
     )
+
+    preprocessor = Pipeline(steps=pipeline_steps).set_output(transform="pandas")
+    return preprocessor  # type: ignore
+
+
+def create_preprocessor2(features_in: Optional[List[str]] = None) -> Pipeline:
+
+    pipeline_steps: List[Tuple[str, Any]] = [
+        (
+            "ct",
+            ColumnTransformer(
+                transformers=(
+                    [
+                        (
+                            "standardize",
+                            StandardScaler(),
+                            make_column_selector(dtype_include=np.number),  # type: ignore
+                        )
+                    ]
+                ),
+                remainder="passthrough",
+            ),
+        ),
+        (
+            "remove_prefixes",
+            FunctionTransformer(
+                lambda df: df.rename(
+                    columns=lambda x: x.split("__")[-1] if "__" in x else x
+                )
+            ),
+        ),
+    ]
 
     preprocessor = Pipeline(steps=pipeline_steps).set_output(transform="pandas")
     return preprocessor  # type: ignore
