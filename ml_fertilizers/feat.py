@@ -2,6 +2,7 @@ import gc
 import json
 import datetime as dt
 from typing import List, Literal, Optional, Tuple
+from catboost import CatBoostClassifier
 from lightgbm import LGBMClassifier
 import numpy as np
 import optuna
@@ -10,6 +11,7 @@ from sklearn import clone
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.calibration import CalibratedClassifierCV, LabelEncoder
 from sklearn.discriminant_analysis import StandardScaler
+from sklearn.feature_selection import RFE, RFECV
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
@@ -56,9 +58,9 @@ train, test = load_data()
 class CFG:
     random_state = 69
     n_jobs = -1
-    cv = 5
+    cv = 4
     gpu = True
-    sample_frac = 0.7
+    sample_frac = 0.5
 
 
 class LGBMClassifierCategoricalGPU(LGBMClassifierGPU):
@@ -130,18 +132,22 @@ def fertilize(
     random_state,
     preprocessor=None,
     cv_type: Literal["oof", "averaged"] = "oof",
+    verbose: int = 1,
 ) -> float:
     kfold = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
     oof_proba = pd.DataFrame(index=X.index, columns=y.unique())
     scores = []
     for fold, (train_index, val_index) in enumerate(kfold.split(X, y)):
         curr_estimator = clone(estimator)
-        # logger.info(f"Fold {fold + 1}/{cv}")
+        if verbose > 0:
+            logger.info(f"Fold {fold + 1}/{cv}")
         X_train, X_val = X.iloc[train_index], X.iloc[val_index]
         y_train, y_val = y.iloc[train_index], y.iloc[val_index]
 
         if preprocessor is not None:
-            logger.warning(f"Fitting preprocessor for fold {fold + 1}/{cv}")
+            if verbose > 0:
+                logger.warning(f"Fitting preprocessor for fold {fold + 1}/{cv}")
+
             X_train = preprocessor.fit_transform(X_train)
             X_val = preprocessor.transform(X_val)
 
@@ -197,7 +203,8 @@ def dataing(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str], Lis
     )
     cat_cols = ["Soil", "Crop", "Fertilizer Name"]
     for col in cat_cols:
-        data[col] = data[col].astype("category")
+        if col in data.columns:
+            data[col] = data[col].astype("category")
 
     int_cols = ["N", "P", "K", "T", "H", "M"]
     for col in int_cols:
@@ -213,7 +220,9 @@ def dataing(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str], Lis
         "limited",
     )
 
-    data["Fertilizer Name"] = le.fit_transform(data["Fertilizer Name"])
+    if "Fertilizer Name" in data.columns:
+        data["Fertilizer Name"] = le.fit_transform(data["Fertilizer Name"])
+
     data["N/K"] = data["N"] / (data["K"] + 1e-6)
     data["N/P"] = data["N"] / (data["P"] + 1e-6)
     data["K/P"] = data["P"] / (data["P"] + 1e-6)
@@ -236,8 +245,10 @@ def dataing(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str], Lis
         categories=["low", "medium", "high", "very_high"],  # type: ignore
     )
 
-    feat_data = data.drop(columns=["Fertilizer Name"])
-    target_data = data["Fertilizer Name"]
+    feat_data = data.drop(
+        columns=[col for col in ["Fertilizer Name"] if col in data.columns]
+    )
+    target_data = data["Fertilizer Name"] if "Fertilizer Name" in data.columns else None
 
     cat_features = ["Soil", "Crop", "Soil_x_Crop", "Temp_bin"]
     feat_cat_data = pd.get_dummies(feat_data[cat_features], drop_first=True)
@@ -478,11 +489,32 @@ def execute_fbfs(combinations: List[Tuple[str, BaseEstimator, List[str]]]):
         logger.info(f"FFS results for {name}:\n{json.dumps(ffs_results, indent=4)}")
 
 
-def test_model():
+def test_model(test_params: Optional[dict] = None):
     # fmt: off
-    xgb = XGBClassifierGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=10, n_estimators=500, allow_categorical_as_ordinal=False, verbosity=0)._set_gpu(CFG.gpu)
+    # xgb = XGBClassifierGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=10, n_estimators=500, allow_categorical_as_ordinal=False, verbosity=0)._set_gpu(CFG.gpu)
     # cat = CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=100)
     # fmt: on
+
+    params = {
+        "n_estimators": 1287,
+        "max_depth": 10,
+        "learning_rate": 0.012185410954626536,
+        "subsample": 0.6070988291201971,
+        "reg_lambda": 0.27586415506189266,
+        "colsample_bytree": 0.5507895358124915,
+        "reg_alpha": 4.57497480707232e-07,
+        "n_jobs": CFG.n_jobs,
+        "enable_categorical": False,
+        "objective": "multi:softprob",
+        "eval_metric": "mlogloss",
+        "device": "cuda",
+    }
+
+    if test_params is not None:
+        logger.info(f"Overriding default parameters with: {test_params}")
+        params.update(test_params)
+
+    xgb = XGBClassifier(**params)
     feats = [
         "Crop",
         "Soil",
@@ -498,35 +530,48 @@ def test_model():
         # "1/D1",
         # "Temp_bin",
     ]
+    ohe_feats = [
+        "Soil_Clayey",
+        "Soil_Loamy",
+        "Soil_Sandy",
+        "Crop_Cotton",
+        "Crop_Ground Nuts",
+        "Crop_Maize",
+        "Crop_Millets",
+        "Crop_Oil seeds",
+        "Crop_Paddy",
+        "Crop_Pulses",
+        "Crop_Sugarcane",
+        "Crop_Tobacco",
+        "Crop_Wheat",
+        "M",
+        "P",
+        "N",
+        "K",
+        "H",
+        "T",
+    ]
     model = xgb
     f_score = fertilize(
         estimator=clone(model),
-        X=X_org[feats],
+        X=X_org[ohe_feats],
         y=y_org,
         cv=CFG.cv,
         cv_type="averaged",
         random_state=CFG.random_state,
-        preprocessor=pre,
+        # preprocessor=pre,
+        verbose=0,
     )
     logger.info(
-        f"F_score for {model.__class__.__name__} with features {feats}: {f_score}"
+        f"F_score for {model.__class__.__name__} with features {ohe_feats}: {f_score}"
     )
-    # e_score = evaluate(
-    #     estimator=clone(model),
-    #     X=X_org[feats],
-    #     y=y_org,
-    #     cv=CFG.cv,
-    # )
-    # logger.info(
-    #     f"Evaluation score for {model.__class__.__name__} with features {feats}: {e_score}"
-    # )
 
 
 def hyper():
 
     my_combinations = [
         HyperOptCombination(
-            name="XGBClassifierGPU_default",
+            # name="XGBClassifierGPU_default",
             # model=XGBClassifierGPU(
             #     enable_categorical=True,
             #     n_jobs=CFG.n_jobs,
@@ -535,14 +580,41 @@ def hyper():
             #     allow_categorical_as_ordinal=False,
             #     verbosity=0,
             # )._set_gpu(CFG.gpu),
+            # model=XGBClassifier(
+            #     enable_categorical=True,
+            #     n_jobs=CFG.n_jobs,
+            #     objective="multi:softprob",
+            #     eval_metric="mlogloss",
+            #     verbosity=1,
+            #     device="cuda",
+            #     tree_method="hist",
+            # ),
+            # name="CatBoostClassifier_default",
+            # model=CatBoostClassifierCategoricalGPU(
+            #     gpu=CFG.gpu,
+            #     thread_count=CFG.n_jobs,
+            #     loss_function="MultiClass",
+            #     eval_metric="MultiClass",
+            #     verbose=0,
+            # ),
+            # model=CatBoostClassifier(  # type: ignore
+            #     loss_function="MultiClass",
+            #     eval_metric="MultiClass",
+            #     task_type="GPU",
+            #     verbose=0,
+            #     cat_features=["Soil", "Crop"],
+            # ),
+            name="XGBClassifier_extended",
             model=XGBClassifier(
-                enable_categorical=True,
-                n_jobs=CFG.n_jobs,
-                objective="multi:softprob",
-                eval_metric="mlogloss",
-                verbosity=1,
-                device="cuda",
-                tree_method="hist",
+                **{
+                    "n_jobs": CFG.n_jobs,
+                    "enable_categorical": True,
+                    "objective": "multi:softprob",
+                    "eval_metric": "mlogloss",
+                    "device": "cuda",
+                    "tree_method": "hist",
+                    "verbosity": 0,
+                }
             ),
             feature_combination=FeatureCombination(
                 features=[
@@ -601,7 +673,7 @@ def hyper():
 
         return objective
 
-    model_run = "simplified"
+    model_run = "extended"
 
     setup_dto = HyperSetupDto(
         n_optimization_trials=150,
@@ -645,7 +717,143 @@ def hyper():
         )
 
 
+def rfe():
+    rfe_res = {}
+    params = {
+        "n_estimators": 1287,
+        "max_depth": 10,
+        "learning_rate": 0.012185410954626536,
+        "subsample": 0.6070988291201971,
+        "reg_lambda": 0.27586415506189266,
+        "colsample_bytree": 0.5507895358124915,
+        "reg_alpha": 4.57497480707232e-07,
+        "n_jobs": CFG.n_jobs,
+        # "enable_categorical": True,
+        "objective": "multi:softprob",
+        "eval_metric": "mlogloss",
+        "device": "cuda",
+    }
+
+    model = XGBClassifier(**params)
+    feat = [
+        "Soil_Clayey",
+        "Soil_Loamy",
+        "Soil_Red",
+        "Soil_Sandy",
+        "Crop_Cotton",
+        "Crop_Ground Nuts",
+        "Crop_Maize",
+        "Crop_Millets",
+        "Crop_Oil seeds",
+        "Crop_Paddy",
+        "Crop_Pulses",
+        "Crop_Sugarcane",
+        "Crop_Tobacco",
+        "Crop_Wheat",
+        "M",
+        "P",
+        "N",
+        "K",
+        "H",
+        "T",
+    ]
+
+    n_features = [i for i in range(5, len(feat) + 1, 5)]
+
+    base_features = feat.copy()
+    for n in sorted(n_features, reverse=True):
+        logger.info(f"Running RFE with n_features={n} for {model.__class__.__name__}")
+        rfe = RFECV(estimator=clone(model), min_features_to_select=n, step=1, cv=3)
+
+        current_features = (
+            X_org[base_features]
+            .columns[rfe.fit(X_org[base_features], y_org).get_support()]
+            .tolist()
+        )
+
+        rfe_res[n] = current_features
+
+        base_features = current_features.copy()
+
+        logger.info(
+            f"Selected features for n_features={n}: {current_features} | Total: {len(current_features)}"
+        )
+
+    json.dump(
+        rfe_res,
+        open(PathManager.output.value / "rfe_results.json", "w"),
+        indent=4,
+    )
+
+
+def predict():
+    params = {
+        "n_estimators": 1287,
+        "max_depth": 10,
+        "learning_rate": 0.012185410954626536,
+        "subsample": 0.6070988291201971,
+        "reg_lambda": 0.27586415506189266,
+        "colsample_bytree": 0.5507895358124915,
+        "reg_alpha": 4.57497480707232e-07,
+        "n_jobs": CFG.n_jobs,
+        "enable_categorical": True,
+        "objective": "multi:softprob",
+        "eval_metric": "mlogloss",
+        "device": "cuda",
+    }
+    model = XGBClassifier(**params)
+    feats = [
+        "Crop",
+        "Soil",
+        # "Soil_x_Crop_limited",
+        "M",
+        "P",
+        "N",
+        "K",
+        "H",
+        "T",
+        # "1/T",
+        # "N+K+P",
+        # "1/D1",
+        # "Temp_bin",
+    ]
+    X_train, y_train, _, _ = dataing(train)
+    X_test, _, _, _ = dataing(test)
+
+    name = "xgb_final"
+    model = model.fit(X_train[feats], y_train)
+
+    y_pred_raw = model.predict_proba(X_test[feats])
+    y_topk = np.argsort(y_pred_raw, axis=1)[:, -3:][:, ::-1]
+    y_pred = np.array([" ".join(le.inverse_transform(row)) for row in y_topk])
+    y_sr = pd.Series(
+        y_pred.tolist(),
+        index=X_test.index,
+        name="Fertilizer Name",
+    )
+
+    y_sr.to_csv(
+        PathManager.output.value
+        / f"{PrefixManager.ensemble.value}{name}_predictions.csv",
+        index_label="id",
+    )
+
+
 if __name__ == "__main__":
     # execute_fbfs(combinations)
+    # for lr in [0.01, 0.015, 0.02]:
+    #     logger.info(f"Testing model with learning rate: {lr}")
+    #     test_model(test_params={"learning_rate": lr})
+
+    # for max_depths in [8, 12, 14]:
+    #     logger.info(f"Testing model with max_depth: {max_depths}")
+    #     test_model(test_params={"max_depth": max_depths})
+
+    # for n_estimators in [1000, 1500, 1750]:
+    #     logger.info(f"Testing model with n_estimators: {n_estimators}")
+    #     test_model(test_params={"n_estimators": n_estimators})
+
     # test_model()
     hyper()
+    # rfe()
+    # predict()

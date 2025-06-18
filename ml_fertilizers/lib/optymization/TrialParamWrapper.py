@@ -113,16 +113,16 @@ class TrialParamWrapper:
 
     def _get_xgb_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
-            "n_estimators": trial.suggest_int("n_estimators", 200, 2200),
-            "max_depth": trial.suggest_int("max_depth", 6, 15),
+            "n_estimators": trial.suggest_int("n_estimators", 200, 2750),
+            "max_depth": trial.suggest_int("max_depth", 6, 14),
             "learning_rate": trial.suggest_float("learning_rate", 0.001, 0.3, log=True),
-            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
-            # "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 100, log=True),
+            "subsample": trial.suggest_float("subsample", 0.25, 1.0),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 100, log=True),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100.0, log=True),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.25, 1.0),
+            "gamma": trial.suggest_float("gamma", 0.01, 10.0, log=True),
             # "booster": trial.suggest_categorical("booster", ["gbtree", "gblinear", "dart"]),
             # "tree_method": trial.suggest_categorical("tree_method", ["approx", "hist"]),
-            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
-            # "gamma": trial.suggest_float("gamma", 0.01, 10.0, log=True),
-            # "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100.0, log=True),
             # "min_child_weight": trial.suggest_float("min_child_weight", 1, 100, log=True),
         }
 
@@ -140,7 +140,7 @@ class TrialParamWrapper:
 
     def _get_catboost_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         return {
-            "iterations": trial.suggest_int("iterations", 200, 3000),
+            "iterations": trial.suggest_int("iterations", 200, 2000),
             "depth": trial.suggest_int("depth", 4, 16),
             "learning_rate": trial.suggest_float("learning_rate", 1e-3, 1.0, log=True),
             "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1e-3, 10.0, log=True),
