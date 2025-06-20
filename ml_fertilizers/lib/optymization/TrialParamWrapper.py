@@ -145,10 +145,10 @@ class TrialParamWrapper:
 
     def _get_catboost_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         return {
-            "iterations": trial.suggest_int("iterations", 300, 3500),
-            "depth": trial.suggest_int("depth", 4, 11),
+            "iterations": trial.suggest_int("iterations", 300, 6000),
+            "depth": trial.suggest_int("depth", 3, 11),
             "learning_rate": trial.suggest_float("learning_rate", 1e-3, 1.0, log=True),
-            "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1e-3, 10.0, log=True),
+            "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1e-3, 30.0, log=True),
             "bagging_temperature": trial.suggest_float("bagging_temperature", 0.0, 1.0),
             "random_strength": trial.suggest_float("random_strength", 0.0, 10.0),
             "border_count": trial.suggest_int("border_count", 32, 255),

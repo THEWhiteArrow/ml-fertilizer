@@ -242,6 +242,76 @@ def dataing(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str], Lis
     data["N2"] = data["N"] ** 2
     data["P2"] = data["P"] ** 2
     data["K2"] = data["K"] ** 2
+
+    data["T_cat"] = data["T"].astype("category")
+    data["H_cat"] = data["H"].astype("category")
+    data["M_cat"] = data["M"].astype("category")
+    data["N_cat"] = data["N"].astype("category")
+    data["P_cat"] = data["P"].astype("category")
+    data["K_cat"] = data["K"].astype("category")
+
+    data["T_cat_10"] = pd.cut(
+        data["T"],
+        bins=[-np.inf, 26.3, 27.6, 28.9, 30.2, 31.5, 32.8, 34.1, 35.4, 36.7, np.inf],
+    )
+    data["H_cat_10"] = pd.cut(
+        data["H"],
+        bins=[-np.inf, 52.2, 54.4, 56.6, 58.8, 61.0, 63.2, 65.4, 67.6, 69.8, np.inf],
+    )
+    data["M_cat_10"] = pd.cut(
+        data["M"],
+        bins=[-np.inf, 29.0, 33.0, 37.0, 41.0, 45.0, 49.0, 53.0, 57.0, 61.0, np.inf],
+    )
+    data["N_cat_10"] = pd.cut(
+        data["N"],
+        bins=[
+            -np.inf,
+            7.8,
+            11.6,
+            15.399999999999999,
+            19.2,
+            23.0,
+            26.799999999999997,
+            30.599999999999998,
+            34.4,
+            38.199999999999996,
+            np.inf,
+        ],
+    )
+    data["P_cat_10"] = pd.cut(
+        data["P"],
+        bins=[
+            -np.inf,
+            4.2,
+            8.4,
+            12.600000000000001,
+            16.8,
+            21.0,
+            25.200000000000003,
+            29.400000000000002,
+            33.6,
+            37.800000000000004,
+            np.inf,
+        ],
+    )
+
+    data["K_cat_10"] = pd.cut(
+        data["K"],
+        bins=[
+            -np.inf,
+            1.9,
+            3.8,
+            5.699999999999999,
+            7.6,
+            9.5,
+            11.399999999999999,
+            13.299999999999999,
+            15.2,
+            17.099999999999998,
+            np.inf,
+        ],
+    )
+
     data["1/D1"] = 100.0 / (data["P"].clip(lower=1) * data["M"].clip(lower=1))
     data["Temp_bin"] = pd.Categorical.from_codes(
         np.digitize(data["T"].values, bins=[-np.inf, 15, 30, 45, np.inf]) - 1,  # type: ignore
@@ -492,63 +562,69 @@ def execute_fbfs(combinations: List[Tuple[str, BaseEstimator, List[str]]]):
         logger.info(f"FFS results for {name}:\n{json.dumps(ffs_results, indent=4)}")
 
 
-def test_model(test_params: Optional[dict] = None):
-    # fmt: off
-    # xgb = XGBClassifierGPU(enable_categorical=True, n_jobs=CFG.n_jobs, objective="multi:softprob", eval_metric="mlogloss", max_depth=10, n_estimators=500, allow_categorical_as_ordinal=False, verbosity=0)._set_gpu(CFG.gpu)
-    # cat = CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=100)
-    # fmt: on
+def test_model():
 
-    # params = {
-    #     "n_estimators": 1287,
-    #     "max_depth": 10,
-    #     "learning_rate": 0.012185410954626536,
-    #     "subsample": 0.6070988291201971,
-    #     "reg_lambda": 0.27586415506189266,
-    #     "colsample_bytree": 0.5507895358124915,
-    #     "reg_alpha": 4.57497480707232e-07,
-    #     "n_jobs": CFG.n_jobs,
-    #     "enable_categorical": False,
-    #     "objective": "multi:softprob",
-    #     "eval_metric": "mlogloss",
-    #     "device": "cuda",
-    # }
+    xgb_extended = XGBClassifier(
+        **{
+            "n_estimators": 1641,
+            "max_depth": 10,
+            "learning_rate": 0.02460848750138636,
+            "subsample": 0.7549412748473164,
+            "reg_lambda": 13.024944025897542,
+            "reg_alpha": 0.00036066098443072206,
+            "colsample_bytree": 0.32713439837769753,
+            "gamma": 0.02493266716223889,
+            "device": "cuda",
+            "n_jobs": CFG.n_jobs,
+            "enable_categorical": True,
+            "objective": "multi:softprob",
+            "eval_metric": "mlogloss",
+        }
+    )
 
-    params = {
-        "n_estimators": 1641,
-        "max_depth": 10,
-        "learning_rate": 0.02460848750138636,
-        "subsample": 0.7549412748473164,
-        "reg_lambda": 13.024944025897542,
-        "reg_alpha": 0.00036066098443072206,
-        "colsample_bytree": 0.32713439837769753,
-        "gamma": 0.02493266716223889,
-        "n_jobs": CFG.n_jobs,
-        "enable_categorical": True,
-        "objective": "multi:softprob",
-        "eval_metric": "mlogloss",
-        "device": "cuda",
-    }
+    cat_basic = CatBoostClassifier(
+        task_type="GPU",
+        thread_count=CFG.n_jobs,
+        loss_function="MultiClass",
+        eval_metric="MultiClass",
+        verbose=0,
+        cat_features=["Soil", "Crop"],
+        allow_writing_files=False,
+        iterations=5330,
+        depth=4,
+        learning_rate=0.10959204039144692,
+        l2_leaf_reg=1.3740075755517118,
+        bagging_temperature=0.1982328950521652,
+        random_strength=8.833202487346481,
+        border_count=173,
+    )
 
-    if test_params is not None:
-        logger.info(f"Overriding default parameters with: {test_params}")
-        params.update(test_params)
-
-    xgb = XGBClassifier(**params)
     feats = [
         "Crop",
         "Soil",
-        # "Soil_x_Crop_limited",
         "M",
         "P",
         "N",
         "K",
         "H",
         "T",
-        # "1/T",
-        # "N+K+P",
-        # "1/D1",
-        # "Temp_bin",
     ]
+    # cat_feats = [
+    #     "Crop",
+    #     "Soil",
+    #     "T",
+    #     "H",
+    #     "M",
+    #     "N",
+    #     "P",
+    #     "K",
+    #     "T_cat_10",
+    #     "H_cat_10",
+    #     "M_cat_10",
+    #     "N_cat_10",
+    #     "P_cat_10",
+    #     "K_cat_10",
+    # ]
     # ohe_feats = [
     #     "Soil_Clayey",
     #     "Soil_Loamy",
@@ -570,7 +646,9 @@ def test_model(test_params: Optional[dict] = None):
     #     "H",
     #     "T",
     # ]
-    model = xgb
+
+    model = cat_basic
+
     f_score = fertilize(
         estimator=clone(model),
         X=X_org[feats],
@@ -579,11 +657,9 @@ def test_model(test_params: Optional[dict] = None):
         cv_type="averaged",
         random_state=CFG.random_state,
         # preprocessor=pre,
-        verbose=0,
+        verbose=1,
     )
-    logger.info(
-        f"F_score for {model.__class__.__name__} with features {feats}: {f_score}"
-    )
+    logger.info(f"F_score for {model.__class__.__name__} : {f_score}")
 
 
 def hyper():
@@ -647,7 +723,7 @@ def hyper():
             enable_categorical=True,
             objective="multiclass",
             eval_metric="multiclass_logloss",
-            # device="gpu",
+            device="gpu",
             verbosity=-1,
         ),
         feature_combination=FeatureCombination(
@@ -664,7 +740,7 @@ def hyper():
         ),
     )
 
-    my_combinations = [cat_combo, lgbm_combo]
+    my_combinations = [lgbm_combo]
 
     def create_objective(data: pd.DataFrame, model_combination: HyperOptCombination):
         X = data.drop(columns=["Fertilizer Name"])
@@ -853,7 +929,27 @@ def predict():
         "device": "cuda",
     }
 
-    model = XGBClassifier(**params)
+    cat_basic = CatBoostClassifier(
+        task_type="GPU",
+        thread_count=CFG.n_jobs,
+        loss_function="MultiClass",
+        eval_metric="MultiClass",
+        verbose=0,
+        cat_features=["Soil", "Crop"],
+        allow_writing_files=False,
+        iterations=5330,
+        depth=4,
+        learning_rate=0.10959204039144692,
+        l2_leaf_reg=1.3740075755517118,
+        bagging_temperature=0.1982328950521652,
+        random_strength=8.833202487346481,
+        border_count=173,
+    )
+
+    # model = XGBClassifier(**params)
+    # model = cat_basic
+    model = None
+
     feats = [
         "Crop",
         "Soil",
@@ -867,7 +963,7 @@ def predict():
     X_train, y_train, _, _ = dataing(train)
     X_test, _, _, _ = dataing(test)
 
-    name = "xgb_extended"
+    name = "another"
     model = model.fit(X_train[feats], y_train)
 
     y_pred_raw = model.predict_proba(X_test[feats])
