@@ -57,7 +57,7 @@ train, test = load_data()
 
 class CFG:
     random_state = 69
-    n_jobs = -1
+    n_jobs = 28
     cv = 4
     gpu = True
     sample_frac = 0.5
@@ -155,8 +155,11 @@ def fertilize(
         y_proba_raw = curr_estimator.predict_proba(X_val)
         oof_proba.iloc[val_index] = y_proba_raw
 
-        y_proba = pd.DataFrame(
-            y_proba_raw, index=X_val.index, columns=le.transform(le.classes_), dtype="float16"  # type: ignore,
+        y_proba = pd.DataFrame(  # type: ignore
+            y_proba_raw,
+            index=X_val.index,
+            columns=le.transform(le.classes_),  # type: ignore
+            dtype="float16",
         )
         score = calc_mapk(y_true=y_val, y_probas=y_proba, k=3)
         scores.append(score)
@@ -495,16 +498,32 @@ def test_model(test_params: Optional[dict] = None):
     # cat = CatBoostClassifierCategoricalGPU(gpu=CFG.gpu, thread_count=CFG.n_jobs, loss_function="MultiClass", eval_metric="MultiClass", verbose=100)
     # fmt: on
 
+    # params = {
+    #     "n_estimators": 1287,
+    #     "max_depth": 10,
+    #     "learning_rate": 0.012185410954626536,
+    #     "subsample": 0.6070988291201971,
+    #     "reg_lambda": 0.27586415506189266,
+    #     "colsample_bytree": 0.5507895358124915,
+    #     "reg_alpha": 4.57497480707232e-07,
+    #     "n_jobs": CFG.n_jobs,
+    #     "enable_categorical": False,
+    #     "objective": "multi:softprob",
+    #     "eval_metric": "mlogloss",
+    #     "device": "cuda",
+    # }
+
     params = {
-        "n_estimators": 1287,
+        "n_estimators": 1641,
         "max_depth": 10,
-        "learning_rate": 0.012185410954626536,
-        "subsample": 0.6070988291201971,
-        "reg_lambda": 0.27586415506189266,
-        "colsample_bytree": 0.5507895358124915,
-        "reg_alpha": 4.57497480707232e-07,
+        "learning_rate": 0.02460848750138636,
+        "subsample": 0.7549412748473164,
+        "reg_lambda": 13.024944025897542,
+        "reg_alpha": 0.00036066098443072206,
+        "colsample_bytree": 0.32713439837769753,
+        "gamma": 0.02493266716223889,
         "n_jobs": CFG.n_jobs,
-        "enable_categorical": False,
+        "enable_categorical": True,
         "objective": "multi:softprob",
         "eval_metric": "mlogloss",
         "device": "cuda",
@@ -530,31 +549,31 @@ def test_model(test_params: Optional[dict] = None):
         # "1/D1",
         # "Temp_bin",
     ]
-    ohe_feats = [
-        "Soil_Clayey",
-        "Soil_Loamy",
-        "Soil_Sandy",
-        "Crop_Cotton",
-        "Crop_Ground Nuts",
-        "Crop_Maize",
-        "Crop_Millets",
-        "Crop_Oil seeds",
-        "Crop_Paddy",
-        "Crop_Pulses",
-        "Crop_Sugarcane",
-        "Crop_Tobacco",
-        "Crop_Wheat",
-        "M",
-        "P",
-        "N",
-        "K",
-        "H",
-        "T",
-    ]
+    # ohe_feats = [
+    #     "Soil_Clayey",
+    #     "Soil_Loamy",
+    #     "Soil_Sandy",
+    #     "Crop_Cotton",
+    #     "Crop_Ground Nuts",
+    #     "Crop_Maize",
+    #     "Crop_Millets",
+    #     "Crop_Oil seeds",
+    #     "Crop_Paddy",
+    #     "Crop_Pulses",
+    #     "Crop_Sugarcane",
+    #     "Crop_Tobacco",
+    #     "Crop_Wheat",
+    #     "M",
+    #     "P",
+    #     "N",
+    #     "K",
+    #     "H",
+    #     "T",
+    # ]
     model = xgb
     f_score = fertilize(
         estimator=clone(model),
-        X=X_org[ohe_feats],
+        X=X_org[feats],
         y=y_org,
         cv=CFG.cv,
         cv_type="averaged",
@@ -563,73 +582,89 @@ def test_model(test_params: Optional[dict] = None):
         verbose=0,
     )
     logger.info(
-        f"F_score for {model.__class__.__name__} with features {ohe_feats}: {f_score}"
+        f"F_score for {model.__class__.__name__} with features {feats}: {f_score}"
     )
 
 
 def hyper():
 
-    my_combinations = [
-        HyperOptCombination(
-            # name="XGBClassifierGPU_default",
-            # model=XGBClassifierGPU(
-            #     enable_categorical=True,
-            #     n_jobs=CFG.n_jobs,
-            #     objective="multi:softprob",
-            #     eval_metric="mlogloss",
-            #     allow_categorical_as_ordinal=False,
-            #     verbosity=0,
-            # )._set_gpu(CFG.gpu),
-            # model=XGBClassifier(
-            #     enable_categorical=True,
-            #     n_jobs=CFG.n_jobs,
-            #     objective="multi:softprob",
-            #     eval_metric="mlogloss",
-            #     verbosity=1,
-            #     device="cuda",
-            #     tree_method="hist",
-            # ),
-            # name="CatBoostClassifier_default",
-            # model=CatBoostClassifierCategoricalGPU(
-            #     gpu=CFG.gpu,
-            #     thread_count=CFG.n_jobs,
-            #     loss_function="MultiClass",
-            #     eval_metric="MultiClass",
-            #     verbose=0,
-            # ),
-            # model=CatBoostClassifier(  # type: ignore
-            #     loss_function="MultiClass",
-            #     eval_metric="MultiClass",
-            #     task_type="GPU",
-            #     verbose=0,
-            #     cat_features=["Soil", "Crop"],
-            # ),
-            name="XGBClassifier_extended",
-            model=XGBClassifier(
-                **{
-                    "n_jobs": CFG.n_jobs,
-                    "enable_categorical": True,
-                    "objective": "multi:softprob",
-                    "eval_metric": "mlogloss",
-                    "device": "cuda",
-                    "tree_method": "hist",
-                    "verbosity": 0,
-                }
-            ),
-            feature_combination=FeatureCombination(
-                features=[
-                    "Crop",
-                    "Soil",
-                    "M",
-                    "P",
-                    "N",
-                    "K",
-                    "H",
-                    "T",
-                ]
-            ),
-        )
-    ]
+    cat_combo = HyperOptCombination(
+        name="CatBoostClassifier_basic",
+        model=CatBoostClassifier(  # type: ignore
+            task_type="GPU",
+            thread_count=CFG.n_jobs,
+            loss_function="MultiClass",
+            eval_metric="MultiClass",
+            verbose=0,
+            cat_features=["Soil", "Crop"],
+            allow_writing_files=False,
+        ),
+        feature_combination=FeatureCombination(
+            features=[
+                "Crop",
+                "Soil",
+                "M",
+                "P",
+                "N",
+                "K",
+                "H",
+                "T",
+            ]
+        ),
+    )
+
+    xgb_combo = HyperOptCombination(
+        name="XGBClassifier_extended",
+        model=XGBClassifier(
+            **{
+                "n_jobs": CFG.n_jobs,
+                "enable_categorical": True,
+                "objective": "multi:softprob",
+                "eval_metric": "mlogloss",
+                "device": "cuda",
+                "tree_method": "hist",
+                "verbosity": 0,
+            }
+        ),
+        feature_combination=FeatureCombination(
+            features=[
+                "Crop",
+                "Soil",
+                "M",
+                "P",
+                "N",
+                "K",
+                "H",
+                "T",
+            ]
+        ),
+    )
+
+    lgbm_combo = HyperOptCombination(
+        name="LGBMClassifier_basic",
+        model=LGBMClassifier(  # type: ignore
+            n_jobs=CFG.n_jobs,
+            enable_categorical=True,
+            objective="multiclass",
+            eval_metric="multiclass_logloss",
+            # device="gpu",
+            verbosity=-1,
+        ),
+        feature_combination=FeatureCombination(
+            features=[
+                "Crop",
+                "Soil",
+                "M",
+                "P",
+                "N",
+                "K",
+                "H",
+                "T",
+            ]
+        ),
+    )
+
+    my_combinations = [cat_combo, lgbm_combo]
 
     def create_objective(data: pd.DataFrame, model_combination: HyperOptCombination):
         X = data.drop(columns=["Fertilizer Name"])
@@ -673,7 +708,7 @@ def hyper():
 
         return objective
 
-    model_run = "extended"
+    model_run = "worth"
 
     setup_dto = HyperSetupDto(
         n_optimization_trials=150,
@@ -703,7 +738,7 @@ def hyper():
     n = setup_hyper(setup_dto=setup_dto, function_dto=function_dto)
 
     if n > 0:
-        df = setup_analysis(
+        _ = setup_analysis(
             model_run=model_run,
             output_dir_path=PathManager.output.value,
             hyper_opt_prefix=PrefixManager.hyper.value,
@@ -711,7 +746,7 @@ def hyper():
             display_plots=False,
         )
 
-        studies_storage_path = aggregate_studies(
+        _ = aggregate_studies(
             study_dir_path=PathManager.output.value
             / f"{PrefixManager.study.value}{model_run}"
         )
@@ -787,40 +822,52 @@ def rfe():
 
 
 def predict():
+    # params = {
+    #     "n_estimators": 1287,
+    #     "max_depth": 10,
+    #     "learning_rate": 0.012185410954626536,
+    #     "subsample": 0.6070988291201971,
+    #     "reg_lambda": 0.27586415506189266,
+    #     "colsample_bytree": 0.5507895358124915,
+    #     "reg_alpha": 4.57497480707232e-07,
+    #     "n_jobs": CFG.n_jobs,
+    #     "enable_categorical": True,
+    #     "objective": "multi:softprob",
+    #     "eval_metric": "mlogloss",
+    #     "device": "cuda",
+    # }
+
     params = {
-        "n_estimators": 1287,
+        "n_estimators": 1641,
         "max_depth": 10,
-        "learning_rate": 0.012185410954626536,
-        "subsample": 0.6070988291201971,
-        "reg_lambda": 0.27586415506189266,
-        "colsample_bytree": 0.5507895358124915,
-        "reg_alpha": 4.57497480707232e-07,
+        "learning_rate": 0.02460848750138636,
+        "subsample": 0.7549412748473164,
+        "reg_lambda": 13.024944025897542,
+        "reg_alpha": 0.00036066098443072206,
+        "colsample_bytree": 0.32713439837769753,
+        "gamma": 0.02493266716223889,
         "n_jobs": CFG.n_jobs,
         "enable_categorical": True,
         "objective": "multi:softprob",
         "eval_metric": "mlogloss",
         "device": "cuda",
     }
+
     model = XGBClassifier(**params)
     feats = [
         "Crop",
         "Soil",
-        # "Soil_x_Crop_limited",
         "M",
         "P",
         "N",
         "K",
         "H",
         "T",
-        # "1/T",
-        # "N+K+P",
-        # "1/D1",
-        # "Temp_bin",
     ]
     X_train, y_train, _, _ = dataing(train)
     X_test, _, _, _ = dataing(test)
 
-    name = "xgb_final"
+    name = "xgb_extended"
     model = model.fit(X_train[feats], y_train)
 
     y_pred_raw = model.predict_proba(X_test[feats])

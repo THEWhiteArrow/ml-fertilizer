@@ -87,16 +87,19 @@ class TrialParamWrapper:
         }
 
     def _get_lgbm_params(self, trial: optuna.Trial) -> Dict[str, Any]:
+        max_depth = trial.suggest_int("max_depth", 4, 12)
+        max_num_leaves = 2**max_depth
+        num_leaves = trial.suggest_int("num_leaves", 8, max_num_leaves, log=True)
         params = {
-            "n_estimators": trial.suggest_int("n_estimators", 200, 3000),
-            "max_depth": trial.suggest_int("max_depth", 3, 22),
+            "n_estimators": trial.suggest_int("n_estimators", 200, 4000),
+            "max_depth": max_depth,
             "learning_rate": trial.suggest_float("learning_rate", 1e-3, 1, log=True),
-            "num_leaves": trial.suggest_int("num_leaves", 15, 50),
+            "num_leaves": num_leaves,
             "subsample": trial.suggest_float("subsample", 0.1, 1),
             # "min_child_weight": trial.suggest_float("min_child_weight", 1e-3, 100, log=True),
-            # "colsample_bytree": trial.suggest_float("colsample_bytree", 0.1, 1),
-            # "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100, log=True),
-            # "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 100, log=True),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.25, 1),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100, log=True),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 100, log=True),
         }
 
         if self._use_proba():
@@ -113,9 +116,11 @@ class TrialParamWrapper:
 
     def _get_xgb_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
-            "n_estimators": trial.suggest_int("n_estimators", 200, 2750),
-            "max_depth": trial.suggest_int("max_depth", 6, 14),
-            "learning_rate": trial.suggest_float("learning_rate", 0.001, 0.3, log=True),
+            "n_estimators": trial.suggest_int("n_estimators", 200, 3000),
+            "max_depth": trial.suggest_int("max_depth", 6, 12),
+            "learning_rate": trial.suggest_float(
+                "learning_rate", 0.0001, 0.3, log=True
+            ),
             "subsample": trial.suggest_float("subsample", 0.25, 1.0),
             "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 100, log=True),
             "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100.0, log=True),
@@ -140,16 +145,15 @@ class TrialParamWrapper:
 
     def _get_catboost_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         return {
-            "iterations": trial.suggest_int("iterations", 200, 2000),
-            "depth": trial.suggest_int("depth", 4, 16),
+            "iterations": trial.suggest_int("iterations", 300, 3500),
+            "depth": trial.suggest_int("depth", 4, 11),
             "learning_rate": trial.suggest_float("learning_rate", 1e-3, 1.0, log=True),
             "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1e-3, 10.0, log=True),
             "bagging_temperature": trial.suggest_float("bagging_temperature", 0.0, 1.0),
-            # "border_count": trial.suggest_int("border_count", 32, 255),
+            "random_strength": trial.suggest_float("random_strength", 0.0, 10.0),
+            "border_count": trial.suggest_int("border_count", 32, 255),
             # "scale_pos_weight": trial.suggest_float("scale_pos_weight", 0.0, 10.0),
-            # "random_strength": trial.suggest_float("random_strength", 0.0, 10.0),
             # "one_hot_max_size": trial.suggest_int("one_hot_max_size", 2, 10),
-            # "rsm": trial.suggest_float("rsm", 0.5, 1.0),
             # "od_type": trial.suggest_categorical("od_type", ["IncToDec", "Iter"]),
             # "od_wait": trial.suggest_int("od_wait", 10, 50),
         }
